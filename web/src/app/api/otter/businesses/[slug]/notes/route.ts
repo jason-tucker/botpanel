@@ -58,7 +58,7 @@ type ParsedBody = z.infer<typeof bodySchema>
  * Highest visibility this viewer may author at this business. Mirrored in
  * the notes page so the form select only offers tiers the user will pass.
  */
-export function maxWritableVisibility(
+function maxWritableVisibility(
   rank: BusinessRank | null,
   botOwner: boolean,
 ): NoteVisibility | null {
