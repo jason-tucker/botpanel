@@ -114,6 +114,7 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
         ? [
             { href: '/sudo', label: 'Admin Home' },
             { href: '/sudo/debug', label: 'Debug' },
+            { href: '/sudo/rpc-test', label: 'RPC Test' },
           ]
         : []),
       { href: '/audit', label: 'Audit Log' },

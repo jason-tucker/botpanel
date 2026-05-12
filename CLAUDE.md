@@ -97,6 +97,8 @@ No HTTP between panel and bots. Everything goes over Redis:
 - **Commands from panel** → `cmd.<bot>.<verb>` request + paired `res.<requestId>` reply.
 - HMAC envelope using shared `BOTPANEL_RPC_SECRET`.
 
+The panel-side client lives in `src/lib/botrpc.ts`: `await callBot<T>(bot, verb, params, opts?)` returns `{ok:true, data:T} | {ok:false, error, details?}` — generates a 24-byte hex `requestId`, subscribes to `res.<requestId>` **before** publishing (race-free), publishes `cmd.<bot>.<verb>` with the HMAC envelope `{requestId, ts, hmac, params}` where `hmac = HMAC-SHA256(BOTPANEL_RPC_SECRET, "${channel}|${requestId}|${ts}|${JSON.stringify(params)}")`, and times out at 5s (configurable via `opts.timeoutMs`). Example: `const r = await callBot('squishy', 'echo', { message: 'hi' })`; on missing `BOTPANEL_RPC_SECRET` it returns `{ok:false, error:'rpc-not-configured'}` instead of throwing, so route handlers can render a friendly error card. Smoke-test the round-trip from `/sudo/rpc-test` (bot-owner only).
+
 ## Where to add things
 
 | What | Where |
