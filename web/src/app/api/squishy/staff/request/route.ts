@@ -105,6 +105,66 @@ export const POST = withAuth(
         ? b.realName.trim().slice(0, 120)
         : null
 
+    // Sudo / bot-owner short-circuit: don't queue a request — grant the
+    // roles immediately via the existing `staff.grant` verb. Per Wave 7b's
+    // approval logic, the bundle is (picked dept) + (picked tier) + base
+    // (`staff.role.it_cri_staff`). Each grant is idempotent on the bot
+    // side ("already had X" is treated as success), so a partial state
+    // here recovers cleanly on retry.
+    const isSudo = access.squishy.sudo || access.botOwner
+    if (isSudo) {
+      const roleKeys: string[] = []
+      if (deptSlug) roleKeys.push(`staff.role.${deptSlug}`)
+      if (tierSlug) roleKeys.push(`staff.role.${tierSlug}`)
+      roleKeys.push('staff.role.it_cri_staff')
+
+      const grants: Array<{ roleKey: string; ok: boolean; error?: string; details?: unknown }> = []
+      for (const roleKey of roleKeys) {
+        const r = await callBot<{ roleId: string; roleName: string }>('squishy', 'staff.grant', {
+          userId: access.actor.id,
+          roleKey,
+        })
+        grants.push(
+          r.ok
+            ? { roleKey, ok: true }
+            : { roleKey, ok: false, error: r.error, details: r.details },
+        )
+      }
+
+      const allOk = grants.every((g) => g.ok)
+
+      await writeAudit({
+        ...auditBase,
+        action: 'staff.self_granted',
+        targetId: access.actor.id,
+        before: null,
+        after: {
+          departmentSlug: deptSlug,
+          tierSlug,
+          realName: realName !== null,
+          grants,
+        },
+        success: allOk,
+        errorMessage: allOk ? null : grants.find((g) => !g.ok)?.error ?? 'partial-failure',
+      }).catch(() => {})
+
+      return NextResponse.json({
+        ok: true,
+        data: {
+          autoApproved: true,
+          departmentSlug: deptSlug,
+          tierSlug,
+          departmentLabel: deptSlug
+            ? deptSlug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+            : null,
+          tierLabel: tierSlug
+            ? tierSlug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+            : null,
+          grants,
+        },
+      })
+    }
+
     const reply = await callBot<{
       approvalId: string
       approvalMsgId: string | null
@@ -146,7 +206,7 @@ export const POST = withAuth(
       success: true,
     }).catch(() => {})
 
-    return NextResponse.json({ ok: true, data: reply.data })
+    return NextResponse.json({ ok: true, data: { ...reply.data, autoApproved: false } })
   },
   {
     require: 'any',
