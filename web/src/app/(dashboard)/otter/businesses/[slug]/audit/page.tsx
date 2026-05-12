@@ -12,21 +12,26 @@
  * `businesses.id::text` via the Drizzle column directly; Drizzle coerces
  * the bound param to text.
  *
- * Pagination via `?page=N` (size 50), optional `?action=substring` ILIKE
- * filter on `action`. DB call wrapped in try/catch — Otter Postgres
+ * Pagination via `?page=N` (size 50). Filters via `?action=…`, `?actor=…`,
+ * `?success=true|false`. DB call wrapped in try/catch — Otter Postgres
  * unreachable degrades to "audit unavailable" instead of 500-ing.
+ *
+ * Wave 7d-C: the row-rendering surface itself now comes from the shared
+ * `<AuditTable>` component. This page is only responsible for the DB
+ * query + access gate + business header; chips, table, and pagination
+ * live in `<AuditTable>` so squishy + otter render identically.
  *
  * Next 15: `params` + `searchParams` are Promises.
  */
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { and, eq, desc, ilike, sql } from 'drizzle-orm'
+import { and, eq, desc, ilike, sql, type SQL } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { otterDb } from '@/lib/db/otter'
 import { businesses } from '@/lib/db/schema/otter/businesses'
 import { auditLogs } from '@/lib/db/schema/otter/auditLogs'
-import { relTime } from '@/lib/util/otterFormat'
+import { AuditTable, type AuditTableRow } from '@/components/AuditTable'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,10 +43,10 @@ type BusinessRow = {
   slug: string
 }
 
-type AuditRow = {
+type RawAuditRow = {
   id: string
   actorDiscordId: string
-  actorName: string
+  actorName: string | null
   action: string
   targetType: string | null
   targetId: string | null
@@ -51,7 +56,7 @@ type AuditRow = {
 }
 
 type LoadResult =
-  | { ok: true; rows: AuditRow[]; total: number }
+  | { ok: true; rows: RawAuditRow[]; total: number; actionOptions: string[] }
   | { ok: false }
 
 async function loadBusiness(slug: string): Promise<BusinessRow | null> {
@@ -75,17 +80,17 @@ async function loadBusiness(slug: string): Promise<BusinessRow | null> {
 async function loadAudit(
   businessId: string,
   page: number,
-  actionFilter: string | null,
+  filters: { action: string | null; actor: string | null; success: 'true' | 'false' | null },
 ): Promise<LoadResult> {
   try {
-    const filter = actionFilter
-      ? and(
-          eq(auditLogs.businessId, businessId),
-          ilike(auditLogs.action, `%${actionFilter}%`),
-        )
-      : eq(auditLogs.businessId, businessId)
+    const clauses: SQL[] = [eq(auditLogs.businessId, businessId)]
+    if (filters.action) clauses.push(ilike(auditLogs.action, `%${filters.action}%`))
+    if (filters.actor) clauses.push(eq(auditLogs.actorDiscordId, filters.actor))
+    if (filters.success === 'true') clauses.push(eq(auditLogs.success, true))
+    if (filters.success === 'false') clauses.push(eq(auditLogs.success, false))
+    const whereExpr = clauses.length === 1 ? clauses[0] : and(...clauses)
 
-    const [rows, countRows] = await Promise.all([
+    const [rows, countRows, distinctActions] = await Promise.all([
       otterDb
         .select({
           id: auditLogs.id,
@@ -99,34 +104,29 @@ async function loadAudit(
           createdAt: auditLogs.createdAt,
         })
         .from(auditLogs)
-        .where(filter)
+        .where(whereExpr)
         .orderBy(desc(auditLogs.createdAt))
         .limit(PAGE_SIZE)
         .offset((page - 1) * PAGE_SIZE),
       otterDb
         .select({ n: sql<number>`count(*)::int` })
         .from(auditLogs)
-        .where(filter),
+        .where(whereExpr),
+      otterDb
+        .selectDistinct({ action: auditLogs.action })
+        .from(auditLogs)
+        .where(eq(auditLogs.businessId, businessId))
+        .orderBy(auditLogs.action)
+        .limit(50),
     ])
 
     const total = Number(countRows[0]?.n ?? 0)
-    return { ok: true, rows, total }
+    const actionOptions = distinctActions.map((r) => r.action).filter(Boolean)
+    return { ok: true, rows, total, actionOptions }
   } catch (err) {
     console.warn('[otter/businesses/:slug/audit] audit load failed', err)
     return { ok: false }
   }
-}
-
-function pillClass(extra: string): string {
-  return `inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${extra}`
-}
-
-function pageUrl(slug: string, page: number, action: string | null): string {
-  const params = new URLSearchParams()
-  if (page !== 1) params.set('page', String(page))
-  if (action) params.set('action', action)
-  const qs = params.toString()
-  return `/otter/businesses/${slug}/audit${qs ? `?${qs}` : ''}`
 }
 
 function NotFoundCard({ slug }: { slug: string }) {
@@ -163,13 +163,49 @@ function ForbiddenCard({ slug }: { slug: string }) {
   )
 }
 
+/**
+ * Map an Otter `audit_logs` row into the shared `AuditTableRow` shape.
+ *
+ * `details` is JSONB written by `writeAudit()` and carries our
+ * `via` / `viewing` / `before` / `after` / `error` fields. We treat
+ * anything we don't recognize as opaque and forward it as part of
+ * `after` so it still surfaces in the diff column.
+ */
+function mapRow(r: RawAuditRow): AuditTableRow {
+  const d = r.details ?? {}
+  const viaRaw = typeof d.via === 'string' ? d.via : 'web'
+  const source: 'web' | 'bot' | 'rpc' =
+    viaRaw === 'web' || viaRaw === 'bot' || viaRaw === 'rpc' ? viaRaw : 'web'
+  const viewing = typeof d.viewing === 'string' ? d.viewing : null
+  const before = 'before' in d ? d.before : undefined
+  const after = 'after' in d ? d.after : undefined
+  const errorMessage = typeof d.error === 'string' ? d.error : null
+  return {
+    id: r.id,
+    changedAt: r.createdAt,
+    action: r.action,
+    actorUserId: r.actorDiscordId,
+    viewingUserId: viewing,
+    source,
+    success: r.success,
+    errorMessage,
+    before,
+    after,
+  }
+}
+
 export default async function BusinessAuditPage(
   {
     params,
     searchParams,
   }: {
     params: Promise<{ slug: string }>
-    searchParams: Promise<{ page?: string; action?: string }>
+    searchParams: Promise<{
+      page?: string
+      action?: string
+      actor?: string
+      success?: string
+    }>
   },
 ) {
   const { slug } = await params
@@ -190,11 +226,41 @@ export default async function BusinessAuditPage(
   const rawPage = Number(sp.page ?? '1')
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1
   const actionFilter = (sp.action ?? '').trim() || null
+  const actorFilter = (sp.actor ?? '').trim() || null
+  const successRaw = sp.success
+  const successFilter: 'true' | 'false' | null =
+    successRaw === 'true' || successRaw === 'false' ? successRaw : null
 
-  const result = await loadAudit(biz.id, page, actionFilter)
-  const totalPages = result.ok
-    ? Math.max(1, Math.ceil(result.total / PAGE_SIZE))
-    : 1
+  const result = await loadAudit(biz.id, page, {
+    action: actionFilter,
+    actor: actorFilter,
+    success: successFilter,
+  })
+
+  const pathname = `/otter/businesses/${slug}/audit`
+  // Pre-resolve actor display names from the rows themselves —
+  // `audit_logs.actor_name` is captured at write-time so we don't
+  // need a per-render RPC. <UserChip> from Wave 7d-B will replace this
+  // with a real Discord-resolved cache.
+  const resolved = new Map<string, { id: string; username?: string | null }>()
+  if (result.ok) {
+    for (const r of result.rows) {
+      if (r.actorName && !resolved.has(r.actorDiscordId)) {
+        resolved.set(r.actorDiscordId, {
+          id: r.actorDiscordId,
+          username: r.actorName,
+        })
+      }
+    }
+  }
+
+  // Pass-through searchParams (already string|undefined) to the table for
+  // its href-building. Drop `page` since the table owns pagination.
+  const passThrough: Record<string, string | undefined> = {
+    action: actionFilter ?? undefined,
+    actor: actorFilter ?? undefined,
+    success: successFilter ?? undefined,
+  }
 
   return (
     <main className="min-h-dvh p-6 sm:p-10">
@@ -213,123 +279,30 @@ export default async function BusinessAuditPage(
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold">Audit log — {biz.name}</h1>
-            {result.ok && (
-              <span className="text-sm text-ink-dim">
-                {result.total} total
-              </span>
-            )}
           </div>
         </header>
-
-        <form
-          action={`/otter/businesses/${slug}/audit`}
-          method="GET"
-          className="flex items-center gap-2"
-        >
-          <input
-            type="text"
-            name="action"
-            defaultValue={actionFilter ?? ''}
-            placeholder="Filter by action…"
-            className="flex-1 rounded-lg border border-line bg-bg-card2 px-3 py-2 text-sm text-ink placeholder:text-ink-dim/70 focus:outline-none focus:ring-1 focus:ring-accent"
-          />
-          <button
-            type="submit"
-            className="rounded-lg border border-line bg-bg-card2 hover:bg-bg-card2/70 px-3 py-2 text-sm text-ink"
-          >
-            Filter
-          </button>
-          {actionFilter && (
-            <Link
-              href={`/otter/businesses/${slug}/audit`}
-              className="rounded-lg border border-line bg-transparent hover:bg-bg-card2/50 px-3 py-2 text-sm text-ink-dim hover:text-ink"
-            >
-              Clear
-            </Link>
-          )}
-        </form>
 
         {!result.ok ? (
           <div className="rounded-xl border border-line bg-bg-card p-6 text-sm text-ink-dim italic">
             Audit data is currently unavailable.
           </div>
-        ) : result.rows.length === 0 ? (
-          <div className="rounded-xl border border-line bg-bg-card p-6 text-sm text-ink-dim">
-            {actionFilter ? 'No matches.' : 'No audit entries for this business.'}
-          </div>
         ) : (
-          <div className="rounded-xl border border-line bg-bg-card overflow-hidden">
-            <ul className="flex flex-col">
-              {result.rows.map((a) => (
-                <li
-                  key={a.id}
-                  className="border-b border-line last:border-b-0 px-3 py-2 hover:bg-bg-card2/30"
-                >
-                  <details className="group">
-                    <summary className="flex flex-wrap items-center gap-3 cursor-pointer list-none">
-                      <span
-                        className={pillClass(
-                          a.success
-                            ? 'bg-ok/15 text-ok border-ok/30'
-                            : 'bg-err/15 text-err border-err/30',
-                        )}
-                      >
-                        {a.success ? '✓' : '✗'}
-                      </span>
-                      <span className="font-mono text-sm min-w-0 truncate flex-1">
-                        {a.action}
-                      </span>
-                      <span className="text-xs text-ink-dim font-mono whitespace-nowrap">
-                        {a.targetType ?? '—'}
-                        {a.targetId ? `/${a.targetId}` : ''}
-                      </span>
-                      <span className="text-xs text-ink-dim font-mono truncate max-w-[14rem]">
-                        {a.actorName} · {`<@${a.actorDiscordId}>`}
-                      </span>
-                      <span
-                        className="text-xs text-ink-dim whitespace-nowrap"
-                        title={a.createdAt.toISOString()}
-                      >
-                        {relTime(a.createdAt)}
-                      </span>
-                    </summary>
-                    <pre className="mt-2 text-xs text-ink-dim font-mono whitespace-pre-wrap break-all bg-bg p-2 rounded border border-line">
-                      {JSON.stringify(
-                        {
-                          actorDiscordId: a.actorDiscordId,
-                          target: a.targetType
-                            ? `${a.targetType}/${a.targetId ?? '?'}`
-                            : a.targetId ?? null,
-                          details: a.details,
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  </details>
-                </li>
-              ))}
-            </ul>
-            <nav className="flex items-center justify-between px-3 py-2 border-t border-line bg-bg-card2/40 text-xs text-ink-dim">
-              {page > 1 ? (
-                <Link href={pageUrl(slug, page - 1, actionFilter)} className="hover:text-ink">
-                  ← Prev
-                </Link>
-              ) : (
-                <span className="opacity-50">← Prev</span>
-              )}
-              <span>
-                Page {page} of {totalPages}
-              </span>
-              {page < totalPages ? (
-                <Link href={pageUrl(slug, page + 1, actionFilter)} className="hover:text-ink">
-                  Next →
-                </Link>
-              ) : (
-                <span className="opacity-50">Next →</span>
-              )}
-            </nav>
-          </div>
+          <AuditTable
+            rows={result.rows.map(mapRow)}
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={result.total}
+            pathname={pathname}
+            searchParams={passThrough}
+            bot="otter"
+            filters={{
+              action: actionFilter ?? undefined,
+              actor: actorFilter ?? undefined,
+              success: successFilter ?? 'all',
+            }}
+            resolved={resolved}
+            actionOptions={result.actionOptions}
+          />
         )}
       </div>
     </main>
