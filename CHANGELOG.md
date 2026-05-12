@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`/otter/caked` Caked messaging page.** Manager-only post-to-channel page for contact / event / pricing / announcement cards. Routes through the bot's `caked.message_post` verb (renderers shared with `/caked` slash command). Audited as `caked.posted`.
+
 ### Fixed
 - **`web/src/app/(dashboard)/squishy/roles/RolesWriteUI.tsx` TS narrowing on `setError`.** The previous ternary collapsed to `{}` instead of `string | null` on the falsy branch — the `&&` chain's intermediate truthy `(parsed as object)` propagated. Split out `parsedErr` with a `typeof === 'string'` guard so `setError(msg)` gets a guaranteed string.
 
