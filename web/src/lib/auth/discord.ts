@@ -1,0 +1,64 @@
+import { env } from '@/lib/env'
+
+const SCOPES = ['identify', 'guilds', 'guilds.members.read'] as const
+
+export function authorizeUrl(state: string): string {
+  if (!env.DISCORD_CLIENT_ID || !env.PUBLIC_BASE_URL) {
+    throw new Error('Discord OAuth not configured — set DISCORD_CLIENT_ID and PUBLIC_BASE_URL')
+  }
+  const params = new URLSearchParams({
+    client_id: env.DISCORD_CLIENT_ID,
+    redirect_uri: `${env.PUBLIC_BASE_URL}/api/auth/callback`,
+    response_type: 'code',
+    scope: SCOPES.join(' '),
+    state,
+    prompt: 'none',
+  })
+  return `https://discord.com/api/oauth2/authorize?${params.toString()}`
+}
+
+export interface DiscordTokenResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  refresh_token: string
+  scope: string
+}
+
+export async function exchangeCode(code: string): Promise<DiscordTokenResponse> {
+  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.PUBLIC_BASE_URL) {
+    throw new Error('Discord OAuth not configured')
+  }
+  const body = new URLSearchParams({
+    client_id: env.DISCORD_CLIENT_ID,
+    client_secret: env.DISCORD_CLIENT_SECRET,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: `${env.PUBLIC_BASE_URL}/api/auth/callback`,
+  })
+  const res = await fetch('https://discord.com/api/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '<no body>')
+    throw new Error(`Discord token exchange failed: ${res.status} ${text}`)
+  }
+  return res.json() as Promise<DiscordTokenResponse>
+}
+
+export interface DiscordUser {
+  id: string
+  username: string
+  global_name: string | null
+  avatar: string | null
+}
+
+export async function fetchMe(accessToken: string): Promise<DiscordUser> {
+  const res = await fetch('https://discord.com/api/users/@me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) throw new Error(`Discord /users/@me failed: ${res.status}`)
+  return res.json() as Promise<DiscordUser>
+}

@@ -14,22 +14,30 @@
 :{$PORT:6080} {
   encode gzip zstd
 
-  # Path-based dev routing: when the Cloudflare Tunnel routes
-  # bots.tucker.host/dev/* to this container, we strip the prefix so the
-  # static files (which live at /srv/landing/foo.html) serve correctly.
-  # No-op when no /dev prefix is present (prod requests at root).
+  # Path-based dev routing: bots.tucker.host/dev/* gets the prefix stripped
+  # so the same Caddy serves both prod (at root) and the dev clone (at /dev/).
+  # No-op when no /dev prefix is present.
   uri strip_prefix /dev
 
-  # Health endpoint Phase 0: report "down" because no dashboard exists yet.
-  # MVP: this gets removed and Next.js owns /api/healthz.
-  handle /api/healthz {
-    header Content-Type application/json
-    respond `{"ok":false,"status":"phase0","bots":{}}` 503
+  # Reverse-proxy to Next.js when it's up. If Next is down or returning 5xx,
+  # handle_errors below falls back to landing/502.html so the page is ALWAYS
+  # something useful — never a Cloudflare error or a blank screen.
+  handle_errors {
+    @5xx expression `{err.status_code} >= 500`
+    handle @5xx {
+      root * /srv/landing
+      rewrite * /502.html
+      file_server
+    }
   }
 
-  # Static landing site.
-  root * /srv/landing
-  file_server
+  reverse_proxy next:3000 {
+    # If Next.js is not yet up (Phase 0 → MVP transition), Caddy
+    # automatically falls back to the error handler above.
+    fail_duration 5s
+    max_fails 2
+    lb_try_duration 2s
+  }
 }
 
 # ──────────────────────────────────────────────────────────────────────────
