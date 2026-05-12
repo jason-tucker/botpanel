@@ -133,9 +133,12 @@ export function ServerForm(props: ServerFormProps): React.JSX.Element {
       setSubmitting(true)
 
       const data = new FormData(form)
-      // Was a `_format=json` hint dropped into the form? If so, we
-      // ship JSON; otherwise stay with form-encoded.
-      const asJson = data.get('_format') === 'json'
+      // Every Wave-6+ write route uses `await req.json()`, so JSON is the
+      // sensible default for non-GET submits. A form can explicitly opt
+      // into form-encoded by dropping `<input type="hidden" name="_format"
+      // value="form">`. The legacy `value="json"` hint also works (no-op
+      // because JSON is now the default).
+      const asJson = data.get('_format') !== 'form'
 
       let token = await getCsrfToken()
 
