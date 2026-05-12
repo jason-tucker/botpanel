@@ -15,6 +15,7 @@
  * DB unavailable: every DB call is wrapped — a downed Postgres degrades
  * to "empty capabilities" rather than 500-ing the whole panel.
  */
+import { sql } from 'drizzle-orm'
 import { env } from '../env'
 import type { Session } from './session'
 
@@ -72,7 +73,8 @@ async function checkSudoDb(userId: string): Promise<boolean> {
     if (!squishyDb) return false
     // Raw SQL keeps us independent of whatever the vendored schema names
     // the table — the schema-sync PR will land the typed equivalent.
-    const rows = await squishyDb`select 1 from sudo_users where user_id = ${userId} limit 1`
+    const result = await squishyDb.execute(sql`select 1 from sudo_users where user_id = ${userId} limit 1`)
+    const rows = (result as unknown as { rows?: unknown[] }).rows ?? (result as unknown as unknown[])
     return Array.isArray(rows) ? rows.length > 0 : false
   } catch (err) {
     console.warn('[perms] sudo_users lookup failed; treating as not-sudo', err)
@@ -84,12 +86,13 @@ async function loadVoiceChannels(userId: string): Promise<string[]> {
   try {
     const { squishyDb } = await import('../db/squishy')
     if (!squishyDb) return []
-    const rows = await squishyDb`
+    const result = await squishyDb.execute(sql`
       select voice_channel_id
       from auto_channels
       where owner_user_id = ${userId}
          or acting_owner_user_id = ${userId}
-    `
+    `)
+    const rows = (result as unknown as { rows?: unknown[] }).rows ?? (result as unknown as unknown[])
     // TODO(V2): JSONB `hosts` array lookup — host-permission grants on
     // someone else's channel. Schema-sync PR will land the typed col.
     const ids: string[] = []
@@ -109,12 +112,13 @@ async function loadOtterBusinesses(userId: string): Promise<Record<string, Busin
     const { otterDb } = await import('../db/otter')
     if (!otterDb) return {}
     // role mappings → { slug: rank }
-    const mappings = await otterDb`
+    const mappingsResult = await otterDb.execute(sql`
       select b.slug as slug, m.rank as rank
       from business_role_mappings m
       join businesses b on b.id = m.business_id
       where m.user_id = ${userId}
-    `
+    `)
+    const mappings = (mappingsResult as unknown as { rows?: unknown[] }).rows ?? (mappingsResult as unknown as unknown[])
     const out: Record<string, BusinessRank> = {}
     for (const row of mappings ?? []) {
       const r = row as { slug?: unknown; rank?: unknown }
@@ -126,12 +130,13 @@ async function loadOtterBusinesses(userId: string): Promise<Record<string, Busin
     // Owner overrides rank — even if a mapping says "manager", explicit
     // ownership wins. Also lets owners appear without a mapping row.
     try {
-      const owners = await otterDb`
+      const ownersResult = await otterDb.execute(sql`
         select b.slug as slug
         from business_owners o
         join businesses b on b.id = o.business_id
         where o.user_id = ${userId}
-      `
+      `)
+      const owners = (ownersResult as unknown as { rows?: unknown[] }).rows ?? (ownersResult as unknown as unknown[])
       for (const row of owners ?? []) {
         const r = row as { slug?: unknown }
         if (typeof r.slug === 'string') out[r.slug] = 'owner'
