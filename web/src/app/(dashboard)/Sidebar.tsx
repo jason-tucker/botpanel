@@ -90,6 +90,7 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/squishy/profiles', label: 'Profiles' },
       { href: '/squishy/automation', label: 'Automation' },
       { href: '/squishy/roles', label: 'Roles' },
+      { href: '/squishy/archives', label: 'Archives' },
       { href: '/squishy/voice', label: 'Active Voice' },
     ],
   }
@@ -100,14 +101,20 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/otter/oc-stock', label: 'OC Stock' },
     ],
   }
-  // "Admin Home" (/sudo) is rendered only for the bot owner — the page
-  // itself gates on `access.botOwner` and the cross-cutting view is
-  // owner-only in MVP. Sudo-without-owner still sees the rest of the
-  // group (audit), they just don't see the Admin Home link.
+  // "Admin Home" (/sudo) and "Debug" (/sudo/debug) are rendered only for
+  // the bot owner — both pages gate on `access.botOwner` and the cross-
+  // cutting + runtime-introspection views are owner-only in MVP. Sudo-
+  // without-owner still sees the rest of the group (audit), they just
+  // don't see the owner-only links.
   const sudoGroup: NavGroup = {
     heading: 'Sudo-only',
     links: [
-      ...(access.botOwner ? [{ href: '/sudo', label: 'Admin Home' }] : []),
+      ...(access.botOwner
+        ? [
+            { href: '/sudo', label: 'Admin Home' },
+            { href: '/sudo/debug', label: 'Debug' },
+          ]
+        : []),
       { href: '/audit', label: 'Audit Log' },
     ],
   }
