@@ -14,6 +14,12 @@
 :{$PORT:6080} {
   encode gzip zstd
 
+  # Path-based dev routing: when the Cloudflare Tunnel routes
+  # bots.tucker.host/dev/* to this container, we strip the prefix so the
+  # static files (which live at /srv/landing/foo.html) serve correctly.
+  # No-op when no /dev prefix is present (prod requests at root).
+  uri strip_prefix /dev
+
   # Health endpoint Phase 0: report "down" because no dashboard exists yet.
   # MVP: this gets removed and Next.js owns /api/healthz.
   handle /api/healthz {
