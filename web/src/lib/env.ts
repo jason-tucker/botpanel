@@ -14,6 +14,12 @@ const schema = z.object({
   // Single-user fallback if no Discord Application Team is configured.
   BOT_OWNER_ID: z.string().regex(/^\d{15,25}$/).default('117501528641634310'),
 
+  // ─── Sudo (Squishy) ───────────────────────────────────────────────
+  // Comma-separated Discord IDs that get implicit Squishy sudo. The
+  // canonical source for the role-based check (SUDO_ROLE_IDS) needs a
+  // Discord member fetch and is deferred to V2.
+  SUDO_USER_IDS: z.string().optional(),
+
   // ─── Discord guild ────────────────────────────────────────────────
   GUILD_ID: z.string().regex(/^\d{15,25}$/).optional(),
 
