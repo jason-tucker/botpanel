@@ -94,6 +94,7 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/squishy/roles', label: 'Roles' },
       { href: '/squishy/archives', label: 'Archives' },
       { href: '/squishy/voice', label: 'Active Voice' },
+      { href: '/squishy/audit', label: 'Audit log' },
     ],
   }
   const otterGroup: NavGroup = {
