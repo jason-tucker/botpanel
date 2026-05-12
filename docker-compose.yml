@@ -60,22 +60,25 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      # Set this in .env from your Cloudflare Zero Trust → Tunnels dashboard.
-      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}
-    depends_on:
-      - caddy
-    networks:
-      - botpanel-net
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "2"
+  # cloudflared is intentionally NOT a compose service — it runs as a standalone
+  # `docker run` container outside this stack so `docker compose up -d` can never
+  # recreate it (and wipe its TUNNEL_TOKEN). Bring it up once on the host:
+  #
+  #   mkdir -p /home/botuser/cloudflared && chmod 700 /home/botuser/cloudflared
+  #   echo "TUNNEL_TOKEN=<your-token>" > /home/botuser/cloudflared/.env
+  #   chmod 600 /home/botuser/cloudflared/.env
+  #   docker run -d \
+  #     --name cloudflared \
+  #     --restart unless-stopped \
+  #     --network host \
+  #     --env-file /home/botuser/cloudflared/.env \
+  #     --label com.centurylinklabs.watchtower.enable=true \
+  #     cloudflare/cloudflared:latest \
+  #     tunnel --no-autoupdate run
+  #
+  # --network host means Cloudflare ingress rules pointing at `localhost:6080`
+  # reach Caddy (which binds 127.0.0.1:6080). It also lets ONE cloudflared
+  # route both prod and dev clones at the same time without docker DNS games.
 
   redis:
     # Single Redis used as both the event bus (bots → panel) AND the command

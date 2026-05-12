@@ -26,12 +26,12 @@ Every write API route calls `writeAudit(...)` with `actor`, `viewing` (impersona
 ## Architecture overview
 
 ```
-internet → Cloudflare Tunnel → cloudflared (container)
-                                    ↓ docker network botpanel-net
-                                caddy:6080
+internet → Cloudflare Tunnel → cloudflared (STANDALONE container, --network host)
+                                    ↓ ingress rule → http://localhost:6080
+                                caddy (compose, 127.0.0.1:6080)
                                     ├─ on 5xx → landing/502.html (always-up)
                                     └─ reverse_proxy → next:3000 (MVP+)
-                                                          ↓
+                                                          ↓ docker network botpanel-net
                                             ┌───────┬────────────┐
                                             ↓       ↓            ↓
                                        db-squishy db-otter     redis
@@ -41,6 +41,20 @@ internet → Cloudflare Tunnel → cloudflared (container)
                                           ┌───────┴───────┐
                                       squishybot      otterbot
 ```
+
+### Why cloudflared is standalone, not in compose
+
+Compose `up -d` recreates containers whenever the compose file or env changes.
+The original cloudflared container had its TUNNEL_TOKEN baked into env at
+create time; a recreate wiped it and the tunnel went dark. Lesson: ingress
+containers must outlive the application stacks they front.
+
+Token lives in `/home/botuser/cloudflared/.env` (chmod 600). One cloudflared
+fronts both prod and dev clones — Cloudflare ingress rules point at
+`localhost:6080` (prod) and `localhost:6081` (dev), and `--network host`
+makes those addresses reach the Caddy containers bound to those loopback
+ports. See the comment block in `docker-compose.yml` for the exact
+`docker run` command.
 
 ## Stack (locked)
 
