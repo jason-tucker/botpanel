@@ -87,6 +87,7 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/squishy/settings', label: 'Settings' },
       { href: '/squishy/hubs', label: 'Hubs' },
       { href: '/squishy/games', label: 'Games' },
+      { href: '/squishy/profiles', label: 'Profiles' },
       { href: '/squishy/automation', label: 'Automation' },
       { href: '/squishy/roles', label: 'Roles' },
       { href: '/squishy/voice', label: 'Active Voice' },
