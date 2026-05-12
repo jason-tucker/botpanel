@@ -31,9 +31,6 @@ import { resolveAccess } from '@/lib/auth/perms'
 import { otterDb } from '@/lib/db/otter'
 import { businesses } from '@/lib/db/schema/otter/businesses'
 import { auditLogs } from '@/lib/db/schema/otter/auditLogs'
-import { relTime } from '@/lib/util/otterFormat'
-import { resolveUsernames } from '@/lib/userDisplay'
-import { UserChip } from '@/components/UserChip'
 import { AuditTable, type AuditTableRow } from '@/components/AuditTable'
 
 export const dynamic = 'force-dynamic'
@@ -265,23 +262,6 @@ export default async function BusinessAuditPage(
     success: successFilter ?? undefined,
   }
 
-  // Batch-resolve every actor + impersonated (`details.viewing`) snowflake
-  // on this page in one RPC round-trip so the table can render
-  // `@displayName` + avatar instead of raw IDs. Empty Map on RPC failure;
-  // UserChip falls back to the raw id per row.
-  const userIds: string[] = []
-  if (result.ok) {
-    for (const a of result.rows) {
-      userIds.push(a.actorDiscordId)
-      const d = a.details
-      if (d && typeof d === 'object') {
-        const v = (d as Record<string, unknown>).viewing
-        if (typeof v === 'string' && v.length > 0) userIds.push(v)
-      }
-    }
-  }
-  const userMap = await resolveUsernames('otter', userIds)
-
   return (
     <main className="min-h-dvh p-6 sm:p-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
@@ -307,97 +287,6 @@ export default async function BusinessAuditPage(
             Audit data is currently unavailable.
           </div>
         ) : (
-          <div className="rounded-xl border border-line bg-bg-card overflow-hidden">
-            <ul className="flex flex-col">
-              {result.rows.map((a) => (
-                <li
-                  key={a.id}
-                  className="border-b border-line last:border-b-0 px-3 py-2 hover:bg-bg-card2/30"
-                >
-                  <details className="group">
-                    <summary className="flex flex-wrap items-center gap-3 cursor-pointer list-none">
-                      <span
-                        className={pillClass(
-                          a.success
-                            ? 'bg-ok/15 text-ok border-ok/30'
-                            : 'bg-err/15 text-err border-err/30',
-                        )}
-                      >
-                        {a.success ? '✓' : '✗'}
-                      </span>
-                      <span className="font-mono text-sm min-w-0 truncate flex-1">
-                        {a.action}
-                      </span>
-                      <span className="text-xs text-ink-dim font-mono whitespace-nowrap">
-                        {a.targetType ?? '—'}
-                        {a.targetId ? `/${a.targetId}` : ''}
-                      </span>
-                      <span className="text-xs text-ink-dim truncate max-w-[18rem] flex items-center gap-1">
-                        <UserChip
-                          userId={a.actorDiscordId}
-                          resolved={userMap.get(a.actorDiscordId) ?? null}
-                        />
-                        {(() => {
-                          const d = a.details
-                          if (!d || typeof d !== 'object') return null
-                          const v = (d as Record<string, unknown>).viewing
-                          if (typeof v !== 'string' || v.length === 0) return null
-                          if (v === a.actorDiscordId) return null
-                          return (
-                            <>
-                              <span className="text-ink-dim">→</span>
-                              <UserChip
-                                userId={v}
-                                resolved={userMap.get(v) ?? null}
-                              />
-                            </>
-                          )
-                        })()}
-                      </span>
-                      <span
-                        className="text-xs text-ink-dim whitespace-nowrap"
-                        title={a.createdAt.toISOString()}
-                      >
-                        {relTime(a.createdAt)}
-                      </span>
-                    </summary>
-                    <pre className="mt-2 text-xs text-ink-dim font-mono whitespace-pre-wrap break-all bg-bg p-2 rounded border border-line">
-                      {JSON.stringify(
-                        {
-                          actorDiscordId: a.actorDiscordId,
-                          target: a.targetType
-                            ? `${a.targetType}/${a.targetId ?? '?'}`
-                            : a.targetId ?? null,
-                          details: a.details,
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  </details>
-                </li>
-              ))}
-            </ul>
-            <nav className="flex items-center justify-between px-3 py-2 border-t border-line bg-bg-card2/40 text-xs text-ink-dim">
-              {page > 1 ? (
-                <Link href={pageUrl(slug, page - 1, actionFilter)} className="hover:text-ink">
-                  ← Prev
-                </Link>
-              ) : (
-                <span className="opacity-50">← Prev</span>
-              )}
-              <span>
-                Page {page} of {totalPages}
-              </span>
-              {page < totalPages ? (
-                <Link href={pageUrl(slug, page + 1, actionFilter)} className="hover:text-ink">
-                  Next →
-                </Link>
-              ) : (
-                <span className="opacity-50">Next →</span>
-              )}
-            </nav>
-          </div>
           <AuditTable
             rows={result.rows.map(mapRow)}
             page={page}
