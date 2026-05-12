@@ -41,6 +41,11 @@ export type ServerFormProps = {
   onSuccess?: (data: unknown) => void
   /** Call form.reset() after a successful submit. Useful for "add new" forms. */
   resetOnSuccess?: boolean
+  /**
+   * If set, prompts the user with `window.confirm(confirm)` before submitting.
+   * Cancel → submit is aborted, no state change. Used for destructive actions.
+   */
+  confirm?: string
   className?: string
   children: ReactNode
 }
@@ -99,7 +104,7 @@ function readErrorMessage(parsed: unknown, fallback: string): string {
 }
 
 export function ServerForm(props: ServerFormProps): React.JSX.Element {
-  const { action, method = 'POST', onSuccess, resetOnSuccess, className, children } = props
+  const { action, method = 'POST', onSuccess, resetOnSuccess, confirm: confirmMsg, className, children } = props
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const formRef = useRef<HTMLFormElement | null>(null)
@@ -108,6 +113,7 @@ export function ServerForm(props: ServerFormProps): React.JSX.Element {
     async (ev: FormEvent<HTMLFormElement>) => {
       ev.preventDefault()
       if (submitting) return
+      if (confirmMsg && typeof window !== 'undefined' && !window.confirm(confirmMsg)) return
       setError(null)
       setSubmitting(true)
 
@@ -198,7 +204,7 @@ export function ServerForm(props: ServerFormProps): React.JSX.Element {
         setSubmitting(false)
       }
     },
-    [action, method, onSuccess, submitting],
+    [action, method, onSuccess, resetOnSuccess, confirmMsg, submitting],
   )
 
   return (
