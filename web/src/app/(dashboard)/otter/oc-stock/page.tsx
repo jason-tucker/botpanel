@@ -1,5 +1,5 @@
 /**
- * /otter/oc-stock — public Original Clothing stock viewer.
+ * /otter/oc-stock — Original Clothing stock viewer + manager.
  *
  * Mirrors the same `/oc` board that Otterbot renders in Discord. Stock state
  * is shown publicly in-server, so this page is intentionally NOT sudo-gated —
@@ -9,17 +9,16 @@
  * a stale build never accidentally renders an authed-only shell to a logged-
  * out viewer.)
  *
- * Edit capability is detected up front via `resolveAccess()` — owners /
- * managers of the `original-clothing` business (or the bot owner) get a
- * "Manage stock" affordance in the top-right corner. That button is wired to
- * `/otter/oc-stock/manage` which does NOT exist yet — write flows ship in
- * Wave 3 follow-up, so for V1 we render it as a disabled placeholder with a
- * tooltip explaining the V2 plan. Linking to a 404 would be a confusing UX;
- * a disabled button telegraphs "yes you have access, just not yet".
+ * Edit capability is detected up front via `resolveAccess()`. Owners /
+ * managers of the `original-clothing` business (or the bot owner) get the
+ * full manage UI (add / edit / delete via `<OcStockManager>` client
+ * component). Non-editors get the same read-only card grid they had before.
  *
  * DB-unavailable: every read is try/catch'd so a downed otter Postgres falls
  * back to a friendly "stock not available right now" card instead of 500-ing
- * the whole page.
+ * the whole page. Mutations themselves live in `/api/otter/oc-stock` + its
+ * `[id]` route — both return the canonical row shape and `router.refresh()`
+ * inside the manager re-renders this server component on success.
  */
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -29,6 +28,7 @@ import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { otterDb } from '@/lib/db/otter'
 import { ocStock } from '@/lib/db/schema/otter/ocStock'
+import { OcStockManager, type OcStockItem } from './OcStockManager'
 
 export const dynamic = 'force-dynamic'
 
@@ -145,6 +145,18 @@ function ItemCard({ row }: { row: OcRow }) {
   )
 }
 
+function rowToItem(r: OcRow): OcStockItem {
+  return {
+    id: r.id,
+    name: r.name,
+    status: r.status,
+    sortOrder: r.sortOrder,
+    url: r.url,
+    updatedAt: (r.updatedAt instanceof Date ? r.updatedAt : new Date(r.updatedAt)).toISOString(),
+    updatedByDiscordId: r.updatedByDiscordId,
+  }
+}
+
 export default async function OcStockPage() {
   const session = await getSession()
   if (!session) redirect('/')
@@ -168,17 +180,12 @@ export default async function OcStockPage() {
           </div>
           <div className="flex items-center gap-3 shrink-0">
             {canEdit && (
-              <button
-                type="button"
-                disabled
-                title="Editing stock lands in V2 — this button will link to /otter/oc-stock/manage."
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-bg-card2 text-ink-dim px-3 py-2 text-sm cursor-not-allowed opacity-70"
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 px-3 py-2 text-xs uppercase tracking-wider"
+                title="You can add, edit and remove stock items below."
               >
-                Manage stock
-                <span className="text-[10px] uppercase tracking-wider text-ink-dim/80">
-                  V2
-                </span>
-              </button>
+                Manage mode
+              </span>
             )}
             <Link href="/me" className="text-sm text-ink-dim hover:text-ink">
               ← Dashboard
@@ -198,6 +205,8 @@ export default async function OcStockPage() {
               work if it&apos;s using a cached snapshot.
             </p>
           </section>
+        ) : canEdit ? (
+          <OcStockManager items={result.rows.map(rowToItem)} canEdit={canEdit} />
         ) : result.rows.length === 0 ? (
           <section className="rounded-2xl border border-line bg-bg-card p-6">
             <div className="text-xs uppercase tracking-wider text-ink-dim mb-2">
