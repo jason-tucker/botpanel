@@ -1,0 +1,46 @@
+# Botpanel ingress. Phase 0: serves the static landing page only.
+# MVP: this Caddyfile flips on a reverse_proxy block to the Next.js container,
+# falling back to the landing on 5xx so the user always sees something useful.
+#
+# Listens on :{$PORT:6080} INSIDE the docker network. No host port mapping —
+# Cloudflare Tunnel reaches us over the docker network.
+{
+  # Auto-HTTPS off — Cloudflare terminates TLS at the edge.
+  auto_https off
+  # Keep admin API off too; we don't run `caddy reload` from inside the container.
+  admin off
+}
+
+:{$PORT:6080} {
+  encode gzip zstd
+
+  # Health endpoint Phase 0: report "down" because no dashboard exists yet.
+  # MVP: this gets removed and Next.js owns /api/healthz.
+  handle /api/healthz {
+    header Content-Type application/json
+    respond `{"ok":false,"status":"phase0","bots":{}}` 503
+  }
+
+  # Static landing site.
+  root * /srv/landing
+  file_server
+}
+
+# ──────────────────────────────────────────────────────────────────────────
+# When Next.js lands (MVP), replace the block above with this one:
+#
+# :{$PORT:6080} {
+#   encode gzip zstd
+#   handle_errors {
+#     @5xx expression `{err.status_code} >= 500`
+#     handle @5xx {
+#       root * /srv/landing
+#       rewrite * /502.html
+#       file_server
+#     }
+#   }
+#   reverse_proxy next:3000 {
+#     fail_duration 5s
+#     max_fails 2
+#   }
+# }

@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# botpanel — VPS management CLI.
+# Install once:  sudo cp scripts/botpanel /usr/local/bin/botpanel && sudo chmod +x /usr/local/bin/botpanel
+
+set -euo pipefail
+
+SERVICE="caddy"
+REPO_DIR="/home/botuser/projects/botpanel"
+
+cd "$REPO_DIR"
+
+case "${1:-}" in
+  start)
+    docker compose up -d
+    docker compose ps
+    ;;
+
+  stop)
+    docker compose down
+    ;;
+
+  restart)
+    docker compose restart "$SERVICE"
+    sleep 2
+    docker compose logs --tail 20 "$SERVICE"
+    ;;
+
+  status)
+    docker compose ps
+    ;;
+
+  logs)
+    docker compose logs -f --tail 100
+    ;;
+
+  tail)
+    docker compose logs --tail "${2:-30}"
+    ;;
+
+  update)
+    echo "▶ Pulling latest source..."
+    git fetch --all
+    git reset --hard origin/main
+    echo "▶ Pulling latest image..."
+    BOT_IMAGE="ghcr.io/$(gh repo view --json owner -q '.owner.login' 2>/dev/null || echo jason-tucker)/botpanel:latest" \
+      docker compose pull "$SERVICE"
+    echo "▶ Restarting..."
+    BOT_IMAGE="ghcr.io/$(gh repo view --json owner -q '.owner.login' 2>/dev/null || echo jason-tucker)/botpanel:latest" \
+      docker compose up -d --remove-orphans
+    docker compose ps
+    ;;
+
+  build)
+    docker compose build "${@:2}"
+    ;;
+
+  rebuild)
+    docker compose up -d --build --remove-orphans
+    ;;
+
+  diagnose)
+    echo "── Container status ──"
+    docker compose ps
+    echo
+    echo "── botpanel-net members ──"
+    docker network inspect botpanel-net --format '{{range .Containers}}{{.Name}} ({{.IPv4Address}})  {{end}}' 2>/dev/null || echo "  network missing — run: docker network create botpanel-net"
+    echo
+    echo "── Host-bound ports (only :22 expected) ──"
+    ss -tlnp 2>/dev/null | grep LISTEN | grep -v '127.0.0.1\|::1' || true
+    ;;
+
+  *)
+    cat <<EOF
+botpanel CLI
+
+  start         Bring stack up
+  stop          Bring stack down
+  restart       Restart the caddy service
+  status        docker compose ps
+  logs          Live tail logs from all containers
+  tail [N]      Last N log lines (default 30)
+  update        git pull + image pull + up -d
+  build [args]  docker compose build
+  rebuild       docker compose up -d --build
+  diagnose      Show stack health and the security audit
+EOF
+    ;;
+esac

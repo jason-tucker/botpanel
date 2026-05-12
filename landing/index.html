@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex">
+  <title>Botpanel · Status</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E🤖%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main>
+    <div class="card">
+      <div class="status" id="status">
+        <span class="dot" id="dot"></span>
+        <span class="label" id="label">Checking dashboard…</span>
+      </div>
+      <h1 id="headline">Botpanel</h1>
+      <p id="subline">Discord admin dashboard for SquishyBot &amp; OtterBot.</p>
+
+      <div class="actions" id="actions">
+        <a class="btn btn-primary hidden" id="open-dashboard" href="/app">Open dashboard</a>
+        <a class="btn btn-ghost" href="https://discord.com/" target="_blank" rel="noopener">Open Discord</a>
+      </div>
+
+      <div class="advice" id="advice">
+        <h2>What you can do right now</h2>
+        <ul id="advice-list">
+          <li>The dashboard hasn't shipped yet — we're standing it up. The bots themselves still work on Discord.</li>
+          <li>Run slash commands like <code>/sudo</code>, <code>/games</code>, <code>/profile</code> as normal.</li>
+          <li>This page auto-refreshes its status every 10 seconds.</li>
+        </ul>
+      </div>
+
+      <div class="bots">
+        <h2>Bot status</h2>
+        <div class="bot-row">
+          <span class="dot bot-dot" id="squishy-dot"></span>
+          <strong>SquishyBot</strong>
+          <span class="bot-detail" id="squishy-detail">heartbeat pending</span>
+        </div>
+        <div class="bot-row">
+          <span class="dot bot-dot" id="otter-dot"></span>
+          <strong>OtterBot</strong>
+          <span class="bot-detail" id="otter-detail">heartbeat pending</span>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <span id="footer-build">build <code id="build-sha">dev</code></span>
+      <span id="footer-deployed">deployed <span id="build-time">just now</span></span>
+    </footer>
+  </main>
+  <script src="/script.js"></script>
+</body>
+</html>

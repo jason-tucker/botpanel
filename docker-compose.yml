@@ -1,0 +1,51 @@
+services:
+  caddy:
+    # CI sets BOT_IMAGE to ghcr.io/<owner>/botpanel:<sha>.
+    # Locally: omit BOT_IMAGE and use `docker compose up -d --build`.
+    image: ${BOT_IMAGE:-botpanel:latest}
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    restart: unless-stopped
+    environment:
+      PORT: ${PORT:-6080}
+    # Bind to LOOPBACK ONLY on the host so cloudflared running on the host
+    # (or anywhere else on the VPS) can reach us at localhost:${PORT}. This
+    # is NOT a public exposure — 127.0.0.1 is not reachable from the internet.
+    # Cloudflare Tunnel is still the only path from the outside world.
+    # If you're running cloudflared in this compose stack instead, it can
+    # also reach us as `caddy:6080` over the botpanel-net docker network.
+    ports:
+      - "127.0.0.1:${PORT:-6080}:${PORT:-6080}"
+    expose:
+      - "${PORT:-6080}"
+    networks:
+      - botpanel-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # Set this in .env from your Cloudflare Zero Trust → Tunnels dashboard.
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}
+    depends_on:
+      - caddy
+    networks:
+      - botpanel-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  botpanel-net:
+    external: true
