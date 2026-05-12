@@ -9,8 +9,11 @@
  * the URL stays linkable and they can sign in differently if needed.
  *
  * The actual table + EventSource lives in the client child below.
+ *
+ * Layout note: this page lives under the `(dashboard)` route group, so
+ * the sidebar + outer `<main>` are owned by the layout — we render a plain
+ * `<div>` here and skip the redundant "← Dashboard" back-link.
  */
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
@@ -27,7 +30,7 @@ export default async function AuditPage() {
 
   if (!canView) {
     return (
-      <main className="min-h-dvh p-6 sm:p-10">
+      <div className="p-6 sm:p-10 pt-16 md:pt-10">
         <div className="max-w-md mx-auto rounded-2xl border border-line bg-bg-card p-6 flex flex-col gap-3">
           <h1 className="text-xl font-semibold">403 — Not allowed</h1>
           <p className="text-ink-dim text-sm">
@@ -36,36 +39,25 @@ export default async function AuditPage() {
             <code className="font-mono text-xs">SUDO_USER_IDS</code> or the{' '}
             <code className="font-mono text-xs">sudo_users</code> table.
           </p>
-          <Link
-            href="/me"
-            className="text-sm text-accent underline self-start"
-          >
-            ← Back to dashboard
-          </Link>
         </div>
-      </main>
+      </div>
     )
   }
 
   return (
-    <main className="min-h-dvh p-6 sm:p-10">
+    <div className="p-6 sm:p-10 pt-16 md:pt-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
-        <header className="flex items-center justify-between">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-semibold">Audit tail</h1>
-            <p className="text-sm text-ink-dim">
-              Live stream of every Squishy setting change and every Otter
-              audit write. The last 50 entries load on mount; new entries
-              stream in via SSE.
-            </p>
-          </div>
-          <Link href="/me" className="text-sm text-ink-dim hover:text-ink">
-            ← Dashboard
-          </Link>
+        <header className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold">Audit tail</h1>
+          <p className="text-sm text-ink-dim">
+            Live stream of every Squishy setting change and every Otter
+            audit write. The last 50 entries load on mount; new entries
+            stream in via SSE.
+          </p>
         </header>
 
         <AuditLive />
       </div>
-    </main>
+    </div>
   )
 }
