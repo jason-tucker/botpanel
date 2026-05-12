@@ -6,16 +6,20 @@
  * intentionally ignored here — `actor.id` is what gets stamped on the
  * staff_approvals row.
  *
- * Routes through `staff.request` on the bot, which inserts the
- * staff_approvals row AND posts the approval card to the configured
- * thread. Panel only owns the auth boundary + rate limit + audit hook;
- * the DB write happens bot-side via the shared `staffRequestService`.
+ * Request body: `{ departmentSlug?, tierSlug?, realName? }`. At least one
+ * of `departmentSlug` / `tierSlug` must be present. The route validates
+ * against `DEPARTMENT_SLUGS` / `TIER_SLUGS` before publishing to the bot.
+ *
+ * Routes through the `staff.request` RPC verb which inserts the row AND
+ * posts the same Components V2 approval card to `STAFF_APPROVAL_THREAD_ID`
+ * as the bot's slash flow. The panel only owns the auth boundary,
+ * rate-limit, and audit hook.
  */
 import { NextResponse, type NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
 import { callBot } from '@/lib/botrpc'
 import { writeAudit } from '@/lib/audit'
-import { STAFF_ROLE_SLUGS } from '@/lib/squishyStaffRoles'
+import { DEPARTMENT_SLUGS, TIER_SLUGS } from '@/lib/squishyStaffRoles'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -29,10 +33,9 @@ export const POST = withAuth(
       return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 })
     }
 
-    const b = body as { roleSlug?: unknown; realName?: unknown; reason?: unknown } | null
-    const roleSlug = b?.roleSlug
-    const realNameRaw = b?.realName
-    const reasonRaw = b?.reason
+    const b = body as
+      | { departmentSlug?: unknown; tierSlug?: unknown; realName?: unknown }
+      | null
 
     const auditBase = {
       bot: 'squishy' as const,
@@ -42,49 +45,84 @@ export const POST = withAuth(
       viewing: access.viewing,
     }
 
-    if (typeof roleSlug !== 'string' || !STAFF_ROLE_SLUGS.has(roleSlug)) {
+    // Normalize to string|null. The bot accepts empty string as "absent"
+    // too, but we filter here so the audit row reflects what the user
+    // really submitted.
+    const deptSlug =
+      typeof b?.departmentSlug === 'string' && b.departmentSlug.length > 0
+        ? b.departmentSlug
+        : null
+    const tierSlug =
+      typeof b?.tierSlug === 'string' && b.tierSlug.length > 0 ? b.tierSlug : null
+
+    if (deptSlug === null && tierSlug === null) {
       await writeAudit({
         ...auditBase,
-        targetId: typeof roleSlug === 'string' ? roleSlug : '',
+        targetId: '',
         before: null,
         after: null,
         success: false,
-        errorMessage: 'invalid-role-slug',
+        errorMessage: 'no-selection',
       }).catch(() => {})
       return NextResponse.json(
-        {
-          error: 'invalid-role-slug',
-          message: 'roleSlug must be one of: ' + Array.from(STAFF_ROLE_SLUGS).join(', '),
-        },
+        { error: 'no-selection', message: 'Pick a department or a tier (or both).' },
         { status: 400 },
       )
     }
 
-    // Trim and length-cap server-side. Empty strings normalize to null
-    // so the bot sees the same "absent" shape as the slash modal's
-    // `getTextInputValue` returns for blanks.
+    if (deptSlug !== null && !DEPARTMENT_SLUGS.has(deptSlug)) {
+      await writeAudit({
+        ...auditBase,
+        targetId: deptSlug,
+        before: null,
+        after: null,
+        success: false,
+        errorMessage: 'invalid-department-slug',
+      }).catch(() => {})
+      return NextResponse.json(
+        { error: 'invalid-department-slug', message: 'Unknown department.' },
+        { status: 400 },
+      )
+    }
+
+    if (tierSlug !== null && !TIER_SLUGS.has(tierSlug)) {
+      await writeAudit({
+        ...auditBase,
+        targetId: tierSlug,
+        before: null,
+        after: null,
+        success: false,
+        errorMessage: 'invalid-tier-slug',
+      }).catch(() => {})
+      return NextResponse.json(
+        { error: 'invalid-tier-slug', message: 'Unknown tier.' },
+        { status: 400 },
+      )
+    }
+
     const realName =
-      typeof realNameRaw === 'string' && realNameRaw.trim() ? realNameRaw.trim().slice(0, 120) : null
-    const reason =
-      typeof reasonRaw === 'string' && reasonRaw.trim() ? reasonRaw.trim().slice(0, 1000) : null
+      typeof b?.realName === 'string' && b.realName.trim()
+        ? b.realName.trim().slice(0, 120)
+        : null
 
     const reply = await callBot<{
       approvalId: string
       approvalMsgId: string | null
-      roleLabel: string
+      departmentLabel: string | null
+      tierLabel: string | null
     }>('squishy', 'staff.request', {
       userId: access.actor.id,
-      slug: roleSlug,
+      departmentSlug: deptSlug,
+      tierSlug: tierSlug,
       realName,
-      reason,
     })
 
     if (!reply.ok) {
       await writeAudit({
         ...auditBase,
-        targetId: roleSlug,
+        targetId: [deptSlug, tierSlug].filter(Boolean).join('+') || '',
         before: null,
-        after: { roleSlug, realName: realName !== null, reason: reason !== null },
+        after: { departmentSlug: deptSlug, tierSlug, realName: realName !== null },
         success: false,
         errorMessage: reply.error,
       }).catch(() => {})
@@ -98,11 +136,12 @@ export const POST = withAuth(
       targetId: reply.data.approvalId,
       before: null,
       after: {
-        roleSlug,
-        roleLabel: reply.data.roleLabel,
+        departmentSlug: deptSlug,
+        departmentLabel: reply.data.departmentLabel,
+        tierSlug,
+        tierLabel: reply.data.tierLabel,
         approvalMsgId: reply.data.approvalMsgId,
         realName: realName !== null,
-        reason: reason !== null,
       },
       success: true,
     }).catch(() => {})

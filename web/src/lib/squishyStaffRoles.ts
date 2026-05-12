@@ -1,34 +1,26 @@
 /**
  * Panel-side mirror of `squishybot/src/services/staffRoles.ts`. The
- * panel doesn't import bot source — duplicating the list (slug +
- * human label only) is the documented trade-off. The bot owns the
- * Discord role IDs and colors; the panel only needs to render the
- * dropdown and round-trip the slug.
+ * panel doesn't import bot source; duplicating slug + label is the
+ * documented trade-off. The bot owns Discord role IDs and colors.
  *
  * Keep this aligned by hand when the bot's list changes. The bot's
- * RPC verb (`staff.request`) returns `unknown-role` if a slug it
- * doesn't recognize lands, so a drift bug surfaces as a 400 with a
- * clear error string rather than a silent insert.
+ * `staff.request` RPC verb returns structured errors (`unknown-department`
+ * / `unknown-tier`) if a slug it doesn't recognize lands, so a drift bug
+ * surfaces as a friendly 400 rather than a silent insert.
+ *
+ * On approval the bot also grants the "IT CRI Staff" base role
+ * automatically — that role doesn't appear in this picker since the
+ * requester never picks it explicitly.
  */
-export type StaffRoleSlug =
-  | 'tier_1'
-  | 'tier_2'
-  | 'tier_3'
-  | 'help_desk'
-  | 'onsites'
-  | 'security'
-  | 'sales'
-  | 'leadership'
+export type DepartmentSlug = 'help_desk' | 'onsites' | 'security' | 'sales' | 'leadership'
+export type TierSlug = 'tier_1' | 'tier_2' | 'tier_3'
 
-export type StaffRoleOption = {
-  slug: StaffRoleSlug
+export type StaffRoleOption<S extends string = string> = {
+  slug: S
   label: string
 }
 
-export const STAFF_ROLE_OPTIONS: ReadonlyArray<StaffRoleOption> = [
-  { slug: 'tier_1', label: 'Tier 1' },
-  { slug: 'tier_2', label: 'Tier 2' },
-  { slug: 'tier_3', label: 'Tier 3' },
+export const DEPARTMENT_OPTIONS: ReadonlyArray<StaffRoleOption<DepartmentSlug>> = [
   { slug: 'help_desk', label: 'Help Desk' },
   { slug: 'onsites', label: 'Onsites' },
   { slug: 'security', label: 'Security' },
@@ -36,8 +28,21 @@ export const STAFF_ROLE_OPTIONS: ReadonlyArray<StaffRoleOption> = [
   { slug: 'leadership', label: 'Leadership' },
 ]
 
-export const STAFF_ROLE_SLUGS: ReadonlySet<string> = new Set(STAFF_ROLE_OPTIONS.map((o) => o.slug))
+export const TIER_OPTIONS: ReadonlyArray<StaffRoleOption<TierSlug>> = [
+  { slug: 'tier_1', label: 'Tier 1' },
+  { slug: 'tier_2', label: 'Tier 2' },
+  { slug: 'tier_3', label: 'Tier 3' },
+]
 
-export function labelForSlug(slug: string): string | null {
-  return STAFF_ROLE_OPTIONS.find((o) => o.slug === slug)?.label ?? null
+export const DEPARTMENT_SLUGS: ReadonlySet<string> = new Set(DEPARTMENT_OPTIONS.map((o) => o.slug))
+export const TIER_SLUGS: ReadonlySet<string> = new Set(TIER_OPTIONS.map((o) => o.slug))
+
+export function labelForDepartment(slug: string | null | undefined): string | null {
+  if (!slug) return null
+  return DEPARTMENT_OPTIONS.find((o) => o.slug === slug)?.label ?? null
+}
+
+export function labelForTier(slug: string | null | undefined): string | null {
+  if (!slug) return null
+  return TIER_OPTIONS.find((o) => o.slug === slug)?.label ?? null
 }
