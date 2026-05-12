@@ -31,6 +31,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { ChannelPicker } from '@/components/pickers/ChannelPicker'
+import { RolePicker } from '@/components/pickers/RolePicker'
 
 const inputCls =
   'w-full rounded-md border border-line bg-bg-card2 px-2 py-1.5 text-sm placeholder:text-ink-dim/50 focus:outline-none focus:ring-1 focus:ring-accent'
@@ -76,50 +78,36 @@ function GameFields({
       </div>
       <div className="flex flex-col gap-1">
         <label className={labelCls} htmlFor={`${idPrefix}-channelId`}>
-          Channel ID (optional)
+          Channel (optional)
         </label>
-        <input
+        <ChannelPicker
           id={`${idPrefix}-channelId`}
           name="channelId"
-          type="text"
-          inputMode="numeric"
-          pattern="\d{15,25}"
-          maxLength={25}
+          types={['text', 'announcement', 'forum']}
           defaultValue={defaults?.channelId ?? ''}
-          placeholder="123456789012345678"
-          className={inputCls}
+          allowNone
         />
       </div>
       <div className="flex flex-col gap-1">
         <label className={labelCls} htmlFor={`${idPrefix}-roleId`}>
-          View role ID (optional)
+          View role (optional)
         </label>
-        <input
+        <RolePicker
           id={`${idPrefix}-roleId`}
           name="roleId"
-          type="text"
-          inputMode="numeric"
-          pattern="\d{15,25}"
-          maxLength={25}
           defaultValue={defaults?.roleId ?? ''}
-          placeholder="123456789012345678"
-          className={inputCls}
+          allowNone
         />
       </div>
       <div className="flex flex-col gap-1">
         <label className={labelCls} htmlFor={`${idPrefix}-pingRoleId`}>
-          Ping role ID (optional)
+          Ping role (optional)
         </label>
-        <input
+        <RolePicker
           id={`${idPrefix}-pingRoleId`}
           name="pingRoleId"
-          type="text"
-          inputMode="numeric"
-          pattern="\d{15,25}"
-          maxLength={25}
           defaultValue={defaults?.pingRoleId ?? ''}
-          placeholder="123456789012345678"
-          className={inputCls}
+          allowNone
         />
       </div>
       <div className="flex flex-col gap-1">
@@ -173,10 +161,9 @@ export function AddGameForm() {
         <input type="hidden" name="_format" value="json" />
         <GameFields idPrefix="add-game" />
         <p className="text-[11px] text-ink-dim">
-          Only <strong>name</strong> is required. Snowflake fields must be 15-25
-          digits if filled in. The bot reads the games table live, and we ping
-          its cache-refresh hook after the insert so /play and /games pick this
-          row up immediately.
+          Only <strong>name</strong> is required. The bot reads the games table
+          live, and we ping its cache-refresh hook after the insert so /play
+          and /games pick this row up immediately.
         </p>
         <div>
           <button type="submit" className={btnPrimary}>
@@ -242,8 +229,8 @@ export function EditGameForm({
           }}
         />
         <p className="text-[11px] text-ink-dim">
-          Clear a snowflake / number field to unset it. Saving fires the bot
-          cache-refresh hook.
+          Pick "— None —" or clear a number field to unset it. Saving fires
+          the bot cache-refresh hook.
         </p>
         <div className="flex items-center gap-2">
           <button type="submit" className={btnPrimary}>
