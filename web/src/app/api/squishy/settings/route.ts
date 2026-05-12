@@ -6,7 +6,7 @@
  * client-side tooling / sudo scripts can pull the same data over HTTP.
  *
  * Resilience: if `squishyDb` throws (DB unreachable, or `SQUISHY_DATABASE_URL`
- * not set), return `{ settings: [], error: 'db-unavailable' }` with a 200 so
+ * not set), return `{ settings: [], errorMessage: 'db-unavailable' }` with a 200 so
  * the caller can still render an empty-state UI instead of having to handle
  * a 500. Matches the pattern used by `/api/squishy/voice/list`.
  */
@@ -46,7 +46,7 @@ export const GET = withAuth(
       return NextResponse.json({ settings })
     } catch (err) {
       console.warn('[squishy/settings] DB unreachable; returning empty list', err)
-      return NextResponse.json({ settings: [], error: 'db-unavailable' })
+      return NextResponse.json({ settings: [], errorMessage: 'db-unavailable' })
     }
   },
   { require: 'sudo' },
