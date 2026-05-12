@@ -34,14 +34,14 @@ export type AuditEvent = {
   actor: AuditActor
   viewing: AuditActor
   action: string
-  targetType?: string
-  targetId?: string
+  targetType?: string | null
+  targetId?: string | null
   before?: unknown
   after?: unknown
   success: boolean
-  errorMessage?: string
-  ipHash?: string
-  uaHash?: string
+  errorMessage?: string | null
+  ipHash?: string | null
+  uaHash?: string | null
 }
 
 function encodeChangedBy(actor: AuditActor, viewing: AuditActor): string {
