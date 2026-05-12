@@ -36,10 +36,11 @@ jobs:
             echo "FLOATING_TAG=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push
+      - name: Build and push Caddy ingress image
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/botpanel:${{ steps.meta.outputs.FLOATING_TAG }}
@@ -47,5 +48,20 @@ jobs:
           build-args: |
             GIT_SHA=${{ steps.meta.outputs.GIT_SHA }}
             BUILD_TIME=${{ steps.meta.outputs.BUILD_TIME }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=caddy
+          cache-to: type=gha,scope=caddy,mode=max
+
+      - name: Build and push Next.js dashboard image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/botpanel-web:${{ steps.meta.outputs.FLOATING_TAG }}
+            ghcr.io/${{ github.repository_owner }}/botpanel-web:${{ steps.meta.outputs.GIT_SHA }}
+          build-args: |
+            GIT_SHA=${{ steps.meta.outputs.GIT_SHA }}
+            BUILD_TIME=${{ steps.meta.outputs.BUILD_TIME }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max

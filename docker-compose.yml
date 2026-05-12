@@ -1,4 +1,33 @@
 services:
+  next:
+    # Next.js dashboard. CI builds + pushes ghcr.io/<owner>/botpanel-web:latest
+    # on main, :dev on dev. NEXT_IMAGE picks which floating tag this clone
+    # tracks. No host port mapping — Caddy proxies via the docker network.
+    image: ${NEXT_IMAGE:-ghcr.io/jason-tucker/botpanel-web:latest}
+    build:
+      context: ./web
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    expose:
+      - "3000"
+    networks:
+      - botpanel-net
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   caddy:
     # CI builds and pushes ghcr.io/<owner>/botpanel:latest on main, :dev on dev.
     # Set BOT_IMAGE in .env to choose which floating tag this clone tracks.
