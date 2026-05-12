@@ -4,30 +4,25 @@
  * Self-service "Request a staff role" card on the profile editor.
  *
  * Rendered only when the editing user is viewing their OWN profile
- * (page.tsx gates this — sudo viewers editing someone else's profile
- * shouldn't be able to file a request on the target's behalf, since the
- * bot-side audit row would still stamp the actor on the staff_approvals
- * row anyway).
+ * (page.tsx gates this).
  *
- * Mirrors the bot's `/settings → Staff Role` flow:
- *   1. Pick a role from the 8 staff slugs.
- *   2. Optional "real / preferred name" + "reason" fields.
- *   3. POST to /api/squishy/staff/request — bot publishes the approval
- *      card to the staff thread and pings the reviewer.
+ * Mirrors the bot's `/settings → Staff Role` flow: pick a department,
+ * pick a tier (both optional, at least one required), optionally add
+ * a real / preferred name, submit. Approval grants whichever roles
+ * were picked plus the IT CRI Staff base role automatically.
  *
- * Renders a list of the user's currently pending requests above the
- * form so they don't file duplicates without seeing them first.
+ * Pending requests are shown above the form so duplicates aren't
+ * filed blindly.
  */
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
-import { STAFF_ROLE_OPTIONS, labelForSlug } from '@/lib/squishyStaffRoles'
+import { DEPARTMENT_OPTIONS, TIER_OPTIONS } from '@/lib/squishyStaffRoles'
 
 export type PendingStaffRequest = {
   id: string
-  roleSlug: string
-  roleLabel: string
+  departmentLabel: string | null
+  tierLabel: string | null
   realName: string | null
-  reason: string | null
   createdAt: Date
 }
 
@@ -46,11 +41,12 @@ function relTime(d: Date): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
-export function StaffRequestCard({
-  pending,
-}: {
-  pending: PendingStaffRequest[]
-}) {
+function summarizeRequest(r: PendingStaffRequest): string {
+  if (r.departmentLabel && r.tierLabel) return `${r.departmentLabel} · ${r.tierLabel}`
+  return r.departmentLabel ?? r.tierLabel ?? 'staff'
+}
+
+export function StaffRequestCard({ pending }: { pending: PendingStaffRequest[] }) {
   const router = useRouter()
 
   return (
@@ -65,8 +61,9 @@ export function StaffRequestCard({
       </header>
 
       <p className="text-xs text-ink-dim leading-relaxed">
-        Pick a role and submit — an admin will review it in Discord. You&apos;ll get a DM
-        when they approve or deny. The same flow as the <code>/settings → Staff Role</code> button on the bot.
+        Pick a department, a tier, or both. An admin will review in Discord and you&apos;ll get a DM
+        with the outcome. Approving also grants the <strong>IT CRI Staff</strong> base role
+        automatically.
       </p>
 
       {pending.length > 0 && (
@@ -78,14 +75,14 @@ export function StaffRequestCard({
             {pending.map((r) => (
               <li key={r.id} className="flex items-center gap-2 text-ink-dim">
                 <span className="inline-flex items-center rounded-full border border-line px-2 py-0.5 text-[10px] uppercase tracking-wider">
-                  {r.roleLabel}
+                  {summarizeRequest(r)}
                 </span>
                 <span className="text-[11px]">{relTime(r.createdAt)}</span>
               </li>
             ))}
           </ul>
           <div className="text-[11px] text-ink-dim mt-1">
-            You can still submit another request below if you want a different role.
+            You can still submit another below if you want a different department / tier.
           </div>
         </div>
       )}
@@ -95,29 +92,46 @@ export function StaffRequestCard({
         method="POST"
         resetOnSuccess
         onSuccess={(data) => {
-          const d = data as { data?: { roleLabel?: string } } | null
-          const label = d?.data?.roleLabel ?? 'role'
+          const d = data as
+            | { data?: { departmentLabel?: string | null; tierLabel?: string | null } }
+            | null
+          const dept = d?.data?.departmentLabel ?? null
+          const tier = d?.data?.tierLabel ?? null
+          const what =
+            dept && tier ? `${dept} · ${tier}` : dept ?? tier ?? 'request'
           // eslint-disable-next-line no-alert
-          alert(`Your request for ${label} has been submitted. An admin will review it shortly.`)
+          alert(
+            `Your request for ${what} has been submitted. An admin will review it shortly. Approving will also grant the IT CRI Staff base role.`,
+          )
           router.refresh()
         }}
         className="flex flex-col gap-4"
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider text-ink-dim">
-            Role <span className="text-err">*</span>
-          </span>
-          <select name="roleSlug" required className={selectCls} defaultValue="">
-            <option value="" disabled>
-              Pick a staff role…
-            </option>
-            {STAFF_ROLE_OPTIONS.map((o) => (
-              <option key={o.slug} value={o.slug}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-ink-dim">Department (optional)</span>
+            <select name="departmentSlug" className={selectCls} defaultValue="">
+              <option value="">— None —</option>
+              {DEPARTMENT_OPTIONS.map((o) => (
+                <option key={o.slug} value={o.slug}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-ink-dim">Tier (optional)</span>
+            <select name="tierSlug" className={selectCls} defaultValue="">
+              <option value="">— None —</option>
+              {TIER_OPTIONS.map((o) => (
+                <option key={o.slug} value={o.slug}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wider text-ink-dim">
@@ -132,18 +146,9 @@ export function StaffRequestCard({
           />
         </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider text-ink-dim">
-            Why you want this role (optional)
-          </span>
-          <textarea
-            name="reason"
-            maxLength={1000}
-            rows={3}
-            className={inputCls}
-            placeholder="Anything that helps the reviewer make a call (up to 1000 chars)."
-          />
-        </label>
+        <p className="text-[11px] text-ink-dim">
+          Pick at least one of department or tier before submitting.
+        </p>
 
         <div className="flex items-center justify-end gap-3">
           <button
@@ -157,5 +162,3 @@ export function StaffRequestCard({
     </section>
   )
 }
-
-export { labelForSlug }
