@@ -35,6 +35,13 @@ const schema = z.object({
   SQUISHY_DATABASE_URL: z.string().url().optional(),
   OTTER_DATABASE_URL: z.string().url().optional(),
 
+  // ─── Audit ────────────────────────────────────────────────────────
+  // Salt mixed into every IP/UA hash recorded in audit rows. Optional —
+  // a sensible default keeps audit working out-of-the-box, but operators
+  // SHOULD set a long random value so hashes from old & new logs match
+  // across deploys (and so the salt isn't guessable from the source).
+  AUDIT_HASH_SALT: z.string().default('botpanel-audit-default-salt-change-me-in-prod'),
+
   // ─── Build metadata ───────────────────────────────────────────────
   GIT_SHA: z.string().default('dev'),
   BUILD_TIME: z.string().default('unknown'),
