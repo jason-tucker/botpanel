@@ -72,3 +72,18 @@ export function discordChannelUrl(
   if (!guildId || !channelId) return null
   return `https://discord.com/channels/${guildId}/${channelId}`
 }
+
+/**
+ * Build a `discord.com` deep link for a specific message. Returns `null` if
+ * any of the three IDs are missing/blank — Discord won't resolve the URL
+ * without all three components, so an "Open in Discord" link should hide
+ * itself rather than render a broken target.
+ */
+export function discordMessageUrl(
+  guildId: string | null | undefined,
+  channelId: string | null | undefined,
+  messageId: string | null | undefined,
+): string | null {
+  if (!guildId || !channelId || !messageId) return null
+  return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`
+}
