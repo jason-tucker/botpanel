@@ -46,25 +46,46 @@ function summarizeRequest(r: PendingStaffRequest): string {
   return r.departmentLabel ?? r.tierLabel ?? 'staff'
 }
 
-export function StaffRequestCard({ pending }: { pending: PendingStaffRequest[] }) {
+export function StaffRequestCard({
+  pending,
+  isSudo,
+}: {
+  pending: PendingStaffRequest[]
+  isSudo: boolean
+}) {
   const router = useRouter()
 
   return (
     <section className="rounded-2xl border border-line bg-bg-card p-6 flex flex-col gap-4">
       <header className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-dim">
-          Request a staff role
+          {isSudo ? 'Grant yourself a staff role' : 'Request a staff role'}
         </h2>
-        <span className="text-[10px] uppercase tracking-wider text-accent border border-accent/40 bg-accent/10 rounded-full px-2 py-0.5">
-          Self
+        <span
+          className={`text-[10px] uppercase tracking-wider rounded-full px-2 py-0.5 border ${
+            isSudo
+              ? 'text-ok border-ok/40 bg-ok/10'
+              : 'text-accent border-accent/40 bg-accent/10'
+          }`}
+        >
+          {isSudo ? 'Sudo · instant' : 'Self'}
         </span>
       </header>
 
-      <p className="text-xs text-ink-dim leading-relaxed">
-        Pick a department, a tier, or both. An admin will review in Discord and you&apos;ll get a DM
-        with the outcome. Approving also grants the <strong>IT CRI Staff</strong> base role
-        automatically.
-      </p>
+      {isSudo ? (
+        <p className="text-xs text-ink-dim leading-relaxed">
+          You&apos;re sudo — picking a department / tier here{' '}
+          <strong>grants the roles immediately</strong> (no review queue). The{' '}
+          <strong>IT CRI Staff</strong> base role is granted too. Picks are idempotent — already
+          having a role is treated as success.
+        </p>
+      ) : (
+        <p className="text-xs text-ink-dim leading-relaxed">
+          Pick a department, a tier, or both. An admin will review in Discord and you&apos;ll get a
+          DM with the outcome. Approving also grants the <strong>IT CRI Staff</strong> base role
+          automatically.
+        </p>
+      )}
 
       {pending.length > 0 && (
         <div className="rounded-md border border-warn/40 bg-warn/5 p-3 text-xs text-ink flex flex-col gap-1.5">
@@ -93,16 +114,36 @@ export function StaffRequestCard({ pending }: { pending: PendingStaffRequest[] }
         resetOnSuccess
         onSuccess={(data) => {
           const d = data as
-            | { data?: { departmentLabel?: string | null; tierLabel?: string | null } }
+            | {
+                data?: {
+                  departmentLabel?: string | null
+                  tierLabel?: string | null
+                  autoApproved?: boolean
+                  grants?: Array<{ roleKey: string; ok: boolean; error?: string }>
+                }
+              }
             | null
           const dept = d?.data?.departmentLabel ?? null
           const tier = d?.data?.tierLabel ?? null
-          const what =
-            dept && tier ? `${dept} · ${tier}` : dept ?? tier ?? 'request'
-          // eslint-disable-next-line no-alert
-          alert(
-            `Your request for ${what} has been submitted. An admin will review it shortly. Approving will also grant the IT CRI Staff base role.`,
-          )
+          const what = dept && tier ? `${dept} · ${tier}` : dept ?? tier ?? 'request'
+
+          if (d?.data?.autoApproved) {
+            const grants = d.data.grants ?? []
+            const failed = grants.filter((g) => !g.ok)
+            const msg =
+              failed.length === 0
+                ? `Granted ${what} + IT CRI Staff. Picks were instant — no review queue.`
+                : `Granted ${what} + IT CRI Staff, but ${failed.length} grant(s) failed: ${failed
+                    .map((g) => `${g.roleKey} (${g.error ?? 'error'})`)
+                    .join(', ')}.\n\nProvision the missing role keys via /sudo → Settings → Staff Roles → Provision & link and retry.`
+            // eslint-disable-next-line no-alert
+            alert(msg)
+          } else {
+            // eslint-disable-next-line no-alert
+            alert(
+              `Your request for ${what} has been submitted. An admin will review it shortly. Approving will also grant the IT CRI Staff base role.`,
+            )
+          }
           router.refresh()
         }}
         className="flex flex-col gap-4"
@@ -153,9 +194,13 @@ export function StaffRequestCard({ pending }: { pending: PendingStaffRequest[] }
         <div className="flex items-center justify-end gap-3">
           <button
             type="submit"
-            className="rounded-md border border-accent/40 bg-accent/20 px-4 py-2 text-sm text-ink hover:bg-accent/30"
+            className={`rounded-md border px-4 py-2 text-sm text-ink ${
+              isSudo
+                ? 'border-ok/40 bg-ok/20 hover:bg-ok/30'
+                : 'border-accent/40 bg-accent/20 hover:bg-accent/30'
+            }`}
           >
-            Submit request
+            {isSudo ? 'Grant immediately' : 'Submit request'}
           </button>
         </div>
       </ServerForm>

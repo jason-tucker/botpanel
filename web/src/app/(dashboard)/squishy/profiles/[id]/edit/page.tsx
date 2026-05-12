@@ -238,16 +238,19 @@ export default async function EditProfilePage({
           <div className="font-mono text-xs text-ink-dim truncate">{id}</div>
           {mode === 'self' && (
             <p className="text-xs text-ink-dim mt-2">
-              Staff fields (category / department / tier / leadership title)
-              are sudo-only and aren&apos;t shown here. You can request a
-              staff role below.
+              Want a staff role? Use the card below.
             </p>
           )}
         </header>
 
         <ProfileEditor id={id} mode={mode} profile={profile} />
 
-        {isSelf && <StaffRequestCard pending={pendingStaff} />}
+        {isSelf && (
+          <StaffRequestCard
+            pending={pendingStaff}
+            isSudo={access.botOwner || access.squishy.sudo}
+          />
+        )}
       </div>
     </main>
   )
