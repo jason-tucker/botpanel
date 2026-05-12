@@ -1,8 +1,8 @@
 services:
   caddy:
-    # CI sets BOT_IMAGE to ghcr.io/<owner>/botpanel:<sha>.
-    # Locally: omit BOT_IMAGE and use `docker compose up -d --build`.
-    image: ${BOT_IMAGE:-botpanel:latest}
+    # CI builds and pushes ghcr.io/<owner>/botpanel:latest on main, :dev on dev.
+    # Set BOT_IMAGE in .env to choose which floating tag this clone tracks.
+    image: ${BOT_IMAGE:-ghcr.io/jason-tucker/botpanel:latest}
     build:
       context: .
       args:
@@ -16,13 +16,15 @@ services:
     # is NOT a public exposure — 127.0.0.1 is not reachable from the internet.
     # Cloudflare Tunnel is still the only path from the outside world.
     # If you're running cloudflared in this compose stack instead, it can
-    # also reach us as `caddy:6080` over the botpanel-net docker network.
+    # also reach us as `caddy:${PORT}` over the botpanel-net docker network.
     ports:
       - "127.0.0.1:${PORT:-6080}:${PORT:-6080}"
     expose:
       - "${PORT:-6080}"
     networks:
       - botpanel-net
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     logging:
       driver: json-file
       options:
@@ -40,6 +42,27 @@ services:
       - caddy
     networks:
       - botpanel-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  watchtower:
+    # Auto-pull-and-restart any container labeled `com.centurylinklabs.watchtower.enable=true`
+    # when its image tag (e.g. :latest, :dev) gets a new push to GHCR. Polls every 30s.
+    # Only this one watchtower is needed on the VPS — it serves prod AND dev clones.
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.docker/config.json:/config.json:ro
+    environment:
+      WATCHTOWER_POLL_INTERVAL: 30
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_NOTIFICATIONS_LEVEL: warn
     logging:
       driver: json-file
       options:

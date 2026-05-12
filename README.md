@@ -35,7 +35,7 @@ internet → Cloudflare Tunnel → cloudflared container
    - Open <https://one.dash.cloudflare.com/> → Zero Trust → Networks → Tunnels → Create Tunnel → "Cloudflared".
    - Name it `botpanel` (anything).
    - Copy the **tunnel token** from the "Install and run a connector" step (under "Docker").
-   - In your Cloudflare zone, add a Public Hostname for the tunnel: any subdomain → service `http://caddy:6080`.
+   - In your Cloudflare zone, add a Public Hostname for the tunnel: any subdomain → service `http://localhost:6080` (or `http://caddy:6080` if running cloudflared in this compose stack).
 
 3. **Configure local env:**
 
@@ -52,17 +52,54 @@ internet → Cloudflare Tunnel → cloudflared container
 
    Then hit your Cloudflare hostname in a browser — you should see the landing page. The status indicator will show 🔴 because there's no dashboard yet (expected).
 
+5. **Discord Developer Portal — required when MVP lands (OAuth login + bot account):**
+
+   This section is here so you can prep the dev portal while the Phase 0 landing page is up. Concrete steps:
+
+   1. Open <https://discord.com/developers/applications> and pick the SquishyBot application (we reuse it; OtterBot keeps its own bot identity).
+   2. **OAuth2 → Redirects:** Add `https://<your-hostname>/api/auth/callback` (e.g. `https://bots.tucker.host/api/auth/callback`). **You'll need to add a second entry for the dev hostname later** (`https://dev.bots.tucker.host/api/auth/callback`).
+   3. **OAuth2 → Client information:** Copy the **Client ID** (`DISCORD_CLIENT_ID` env) and **Client Secret** (`DISCORD_CLIENT_SECRET` env). Treat the secret like a password — don't commit it.
+   4. **OAuth2 → Default Authorization Link → Scopes:** the panel requests `identify guilds guilds.members.read`. (These are user OAuth scopes, NOT bot scopes — the bot keeps its existing token.)
+   5. **Team setup** (lets multiple Discord accounts have bot-owner access without sharing the env `BOT_OWNER_ID`):
+      - Dev portal → Teams → create a team if you don't have one, then attach the application to it.
+      - Add team members as **Admin** or **Developer** (Read-only is intentionally excluded by the panel).
+      - The panel reads team membership at runtime via the existing `isBotOwner` resolver in [squishybot](https://github.com/jason-tucker/squishybot/blob/main/src/services/botOwner.ts).
+   6. Both bots already have their bot accounts — no new bot token is needed for the panel.
+
+   Re-deploy the panel (`scripts/botpanel update`) after setting the OAuth env vars.
+
+   **For the dev clone:** repeat steps 2 with the dev hostname so OAuth login works on `dev.bots.tucker.host` too. The dev `.env` will hold its own `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` only if you want a separate Discord application for dev — otherwise reuse prod's.
+
 ### Deploys
 
-Every push to `main` triggers GitHub Actions to build a new image and push to GHCR. To pick up changes on the VPS:
+GitHub Actions builds and pushes an image to GHCR on every push:
 
-```bash
-cd /home/botuser/projects/botpanel
-docker compose pull
-docker compose up -d
-```
+- `push` to `main` → `ghcr.io/jason-tucker/botpanel:latest` + `:<sha>`
+- `push` to `dev`  → `ghcr.io/jason-tucker/botpanel:dev`    + `:<sha>`
 
-(or wire up a webhook / `cron @reboot` / `watchtower` later.)
+The Watchtower service in the compose stack polls GHCR every 30 s and
+restarts containers whose image tag has changed. **You don't need to SSH
+in to deploy** — push to main (or dev) and the host picks it up in ~30 s.
+
+### Production + dev side-by-side
+
+Two clones on the VPS, one per branch, each on its own port:
+
+| Clone | Branch | Port | Image tag | Path |
+|---|---|---|---|---|
+| Production | `main` | `6080` | `:latest` | `/home/botuser/projects/botpanel` |
+| Dev | `dev` | `6081` | `:dev` | `/home/botuser/projects/botpanel-dev` |
+
+Each clone has its own `.env` (`BOT_IMAGE`, `PORT`, `COMPOSE_PROJECT_NAME`). The
+single Watchtower in the production clone serves both — it watches every
+container labeled `com.centurylinklabs.watchtower.enable=true` on the host.
+
+Cloudflare Tunnel can route two public hostnames to the two ports:
+
+| Hostname | Service URL |
+|---|---|
+| `bots.tucker.host`     | `http://localhost:6080` |
+| `dev.bots.tucker.host` | `http://localhost:6081` |
 
 ### Files
 

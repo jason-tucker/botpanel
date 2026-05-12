@@ -2,7 +2,7 @@ name: Deploy Botpanel
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -29,6 +29,12 @@ jobs:
         run: |
           echo "GIT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          # Tag :latest only on main; :dev only on dev. SHA tag always.
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "FLOATING_TAG=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "FLOATING_TAG=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -36,7 +42,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/botpanel:latest
+            ghcr.io/${{ github.repository_owner }}/botpanel:${{ steps.meta.outputs.FLOATING_TAG }}
             ghcr.io/${{ github.repository_owner }}/botpanel:${{ steps.meta.outputs.GIT_SHA }}
           build-args: |
             GIT_SHA=${{ steps.meta.outputs.GIT_SHA }}
