@@ -10,7 +10,7 @@
  * so an owner knows when a "revoke" click is incomplete.
  *
  * Idempotent: deleting a row that doesn't exist returns
- * `{ ok:true, revoked:false }` so the UI can refresh without a popup.
+ * `{ success: true, revoked:false }` so the UI can refresh without a popup.
  *
  * Audit: every success and every failure writes `sudo.revoked` via
  * `writeAudit`. `before` is the row we just removed; `after` is null.
@@ -39,14 +39,14 @@ export const DELETE = withAuth(
         action: 'sudo.revoked',
         targetType: 'sudo_users',
         targetId: id,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: 'invalid-snowflake',
+        success: false,
+        errorMessage: 'invalid-snowflake',
       }).catch(() => {})
       return NextResponse.json(
-        { error: 'id must be a Discord snowflake (15-25 digits)' },
+        { errorMessage: 'id must be a Discord snowflake (15-25 digits)' },
         { status: 400 },
       )
     }
@@ -75,13 +75,13 @@ export const DELETE = withAuth(
         action: 'sudo.revoked',
         targetType: 'sudo_users',
         targetId: id,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: true,
-        error: 'not-found',
+        success: true,
+        errorMessage: 'not-found',
       }).catch(() => {})
-      return NextResponse.json({ ok: true, userId: id, revoked: false })
+      return NextResponse.json({ success: true, userId: id, revoked: false })
     }
 
     try {
@@ -96,11 +96,11 @@ export const DELETE = withAuth(
         action: 'sudo.revoked',
         targetType: 'sudo_users',
         targetId: id,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before,
         after: null,
-        ok: false,
-        error: msg,
+        success: false,
+        errorMessage: msg,
       }).catch(() => {})
       return NextResponse.json({ error: 'db-write-failed' }, { status: 503 })
     }
@@ -110,15 +110,15 @@ export const DELETE = withAuth(
       action: 'sudo.revoked',
       targetType: 'sudo_users',
       targetId: id,
-      actorDiscordId: actor,
+      actor: access.actor, viewing: access.viewing,
       before,
       after: null,
-      ok: true,
+      success: true,
     }).catch((err) => {
       console.warn('[sudo/users DELETE] audit write failed (delete succeeded)', err)
     })
 
-    return NextResponse.json({ ok: true, userId: id, revoked: true })
+    return NextResponse.json({ success: true, userId: id, revoked: true })
   },
   {
     require: 'botOwner',

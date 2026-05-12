@@ -10,7 +10,7 @@
  * intentionally loose to survive Discord widening the format later).
  *
  * Semantics: idempotent — `ON CONFLICT (user_id) DO NOTHING`. Calling this
- * twice with the same id returns `{ ok:true, granted:false }` on the second
+ * twice with the same id returns `{ success: true, granted:false }` on the second
  * call so the UI can refresh without flashing an error.
  *
  * Audit: every success and every failure writes `sudo.granted` via
@@ -44,11 +44,11 @@ export const POST = withAuth(
         action: 'sudo.granted',
         targetType: 'sudo_users',
         targetId: '',
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: 'invalid-json',
+        success: false,
+        errorMessage: 'invalid-json',
       }).catch(() => {})
       return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 })
     }
@@ -60,14 +60,14 @@ export const POST = withAuth(
         action: 'sudo.granted',
         targetType: 'sudo_users',
         targetId: typeof userId === 'string' ? userId : '',
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: 'invalid-snowflake',
+        success: false,
+        errorMessage: 'invalid-snowflake',
       }).catch(() => {})
       return NextResponse.json(
-        { error: 'userId must be a Discord snowflake (15-25 digits)' },
+        { errorMessage: 'userId must be a Discord snowflake (15-25 digits)' },
         { status: 400 },
       )
     }
@@ -90,17 +90,17 @@ export const POST = withAuth(
         action: 'sudo.granted',
         targetType: 'sudo_users',
         targetId: userId,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: granted
           ? { userId, addedByDiscordId: actor }
           : { userId, alreadyPresent: true },
-        ok: true,
+        success: true,
       }).catch((err) => {
         console.warn('[sudo/users POST] audit write failed (insert succeeded)', err)
       })
 
-      return NextResponse.json({ ok: true, userId, granted })
+      return NextResponse.json({ success: true, userId, granted })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
       console.error('[sudo/users POST] DB write failed', err)
@@ -109,11 +109,11 @@ export const POST = withAuth(
         action: 'sudo.granted',
         targetType: 'sudo_users',
         targetId: userId,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: msg,
+        success: false,
+        errorMessage: msg,
       }).catch(() => {})
       return NextResponse.json({ error: 'db-write-failed' }, { status: 503 })
     }
