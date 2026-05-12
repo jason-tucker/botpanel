@@ -95,8 +95,8 @@ export const POST = withAuth<[RouteCtx]>(
         action: 'employee.demote',
         targetType: 'business',
         targetId: slug,
-        before: reply.data?.before,
-        after: reply.data?.after,
+        before: null,
+        after: null,
         success: false,
         errorMessage: reply.error,
       }).catch(() => {})
