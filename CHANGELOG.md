@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`/otter/businesses/[slug]` gains a Sync Roles button (owner-only).** POSTs to `/api/otter/businesses/[slug]/sync-roles`, which calls the new bot-side `business.sync_roles` verb. Audited as `business.sync_roles` with the `{added, removed, skipped}` payload.
+
 ### Fixed
 - **`web/src/app/(dashboard)/squishy/roles/RolesWriteUI.tsx` TS narrowing on `setError`.** The previous ternary collapsed to `{}` instead of `string | null` on the falsy branch — the `&&` chain's intermediate truthy `(parsed as object)` propagated. Split out `parsedErr` with a `typeof === 'string'` guard so `setError(msg)` gets a guaranteed string.
 
