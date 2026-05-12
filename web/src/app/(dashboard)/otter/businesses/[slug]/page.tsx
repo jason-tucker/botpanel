@@ -38,9 +38,11 @@ import {
 import {
   OwnersCard,
   RoleMappingsCard,
+  SyncRolesCard,
   type Owner as OwnerCardRow,
   type Mapping as MappingCardRow,
 } from './BusinessAdminControls'
+import { EmployeePanel, type RosterEntry } from './EmployeePanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -276,6 +278,23 @@ export default async function BusinessDetailPage(
   const canEditMappings =
     access.botOwner || access.otter.businesses[slug] === 'owner'
 
+  // Wave 7c-B — employee hire/fire/promote/demote panel. Only rendered for
+  // manager+ on this business (or bot owner). Owner roster comes straight
+  // from `ownersR` so we don't re-query.
+  const viewerOwnsBusiness =
+    access.botOwner || access.otter.businesses[slug] === 'owner'
+  const viewerCanManageEmployees =
+    access.botOwner ||
+    access.otter.businesses[slug] === 'owner' ||
+    access.otter.businesses[slug] === 'manager'
+  const employeeRoster: RosterEntry[] = ownersR.ok
+    ? ownersR.data.map((o) => ({
+        discordUserId: o.discordUserId,
+        rank: 'owner' as const,
+        addedAt: o.addedAt ? o.addedAt.toISOString() : null,
+      }))
+    : []
+
   return (
     <main className="min-h-dvh p-6 sm:p-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
@@ -329,6 +348,15 @@ export default async function BusinessDetailPage(
           </section>
         )}
 
+        {/* Employee management — Wave 7c-B */}
+        {viewerCanManageEmployees && (
+          <EmployeePanel
+            slug={slug}
+            roster={employeeRoster}
+            canActAsOwner={viewerOwnsBusiness}
+          />
+        )}
+
         {/* Role mappings */}
         {mappingsR.ok ? (
           <RoleMappingsCard
@@ -344,6 +372,12 @@ export default async function BusinessDetailPage(
             <Unavailable what="Role mapping" />
           </section>
         )}
+
+        {/* Sync roles to Discord — owner-only */}
+        <SyncRolesCard
+          slug={slug}
+          isOwner={access.otter.businesses[slug] === 'owner'}
+        />
 
         {/* Recent standings */}
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">

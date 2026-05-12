@@ -23,6 +23,7 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { ChannelPicker } from '@/components/pickers/ChannelPicker'
 
 const inputCls =
   'w-full rounded-md border border-line bg-bg-card2 px-2 py-1.5 text-sm placeholder:text-ink-dim/50 focus:outline-none focus:ring-1 focus:ring-accent'
@@ -124,17 +125,13 @@ export function AddHubForm() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="flex flex-col gap-1">
             <label className={labelCls} htmlFor="hub-voiceChannelId">
-              Voice channel ID
+              Voice channel
             </label>
-            <input
+            <ChannelPicker
               id="hub-voiceChannelId"
               name="voiceChannelId"
-              type="text"
+              types={['voice']}
               required
-              inputMode="numeric"
-              pattern="\d{15,25}"
-              placeholder="123456789012345678"
-              className={inputCls}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -165,16 +162,13 @@ export function AddHubForm() {
           </div>
           <div className="flex flex-col gap-1">
             <label className={labelCls} htmlFor="hub-categoryId">
-              Category ID (optional)
+              Category (optional)
             </label>
-            <input
+            <ChannelPicker
               id="hub-categoryId"
               name="categoryId"
-              type="text"
-              inputMode="numeric"
-              pattern="\d{15,25}"
-              placeholder="(uses channel.auto_voice_category)"
-              className={inputCls}
+              types={['category']}
+              allowNone
             />
           </div>
         </div>

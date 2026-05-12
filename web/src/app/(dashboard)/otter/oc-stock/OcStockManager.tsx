@@ -239,6 +239,83 @@ function ManageCard({
   )
 }
 
+function PostToChannelForm() {
+  // Wave 7c-C. Lives below the edit controls — a manager finishes editing
+  // items, drops in the destination channel ID, and pushes the live card
+  // to Discord via the bot's `oc.stock_post` verb. Success surfaces the
+  // resulting Discord message ID (so the operator can spot-check the
+  // post or grab it for audit). Failure surfaces the bot's error code
+  // verbatim (`channel-not-found`, `not-text-based`, etc.) so it's clear
+  // whether the channel is wrong, the bot lacks Send perms, or RPC timed
+  // out.
+  // ServerForm renders its own red error banner above the form for 4xx /
+  // 5xx responses (including the verbatim `error` code from the route's
+  // `{error: 'channel-not-found' | 'not-text-based' | ...}` envelope), so
+  // we only need to drive the green "posted" strip locally.
+  const [posted, setPosted] = useState<{ messageId: string; channelId: string } | null>(null)
+
+  return (
+    <section className="rounded-2xl border border-line bg-bg-card p-4 flex flex-col gap-3">
+      <div className="text-xs uppercase tracking-wider text-ink-dim">
+        Post to channel
+      </div>
+      <p className="text-sm text-ink-dim">
+        Posts the live OC stock card to the Discord channel below. Any OC role
+        member can post — the bot must have <code className="font-mono text-xs">Send Messages</code> in the channel.
+      </p>
+      <ServerForm
+        action="/api/otter/oc-stock/post"
+        method="POST"
+        onSuccess={(data) => {
+          if (data && typeof data === 'object') {
+            const o = data as Record<string, unknown>
+            const messageId = typeof o.messageId === 'string' ? o.messageId : ''
+            const channelId = typeof o.channelId === 'string' ? o.channelId : ''
+            if (messageId && channelId) {
+              setPosted({ messageId, channelId })
+              return
+            }
+          }
+          setPosted(null)
+        }}
+        className="flex flex-col sm:flex-row sm:items-end gap-2"
+      >
+        <label className="flex-1 flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-ink-dim">
+            Channel ID (snowflake)
+          </span>
+          <input
+            name="channelId"
+            required
+            pattern="\d{17,20}"
+            placeholder="1234567890123456789"
+            inputMode="numeric"
+            className="rounded-md border border-line bg-bg-card2 text-ink text-sm px-2 py-1.5 font-mono"
+          />
+        </label>
+        <button
+          type="submit"
+          className="rounded-md border border-line bg-bg-card2 text-ink text-sm px-3 py-1.5 hover:bg-bg-card"
+        >
+          Post to channel
+        </button>
+      </ServerForm>
+
+      {posted && (
+        <div
+          role="status"
+          className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 flex flex-col gap-0.5"
+        >
+          <span>Posted to Discord.</span>
+          <span className="font-mono text-[11px] opacity-80">
+            messageId: {posted.messageId} · channelId: {posted.channelId}
+          </span>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function OcStockManager({
   items,
   canEdit,
@@ -329,6 +406,8 @@ export function OcStockManager({
           ))}
         </section>
       )}
+
+      {canEdit && <PostToChannelForm />}
     </div>
   )
 }

@@ -507,6 +507,102 @@ function MappingRowView({
   )
 }
 
+// ───── Sync roles ──────────────────────────────────────────────────────
+
+/**
+ * SyncRolesCard — owner-only "Sync roles to Discord" button. POSTs to
+ * `/api/otter/businesses/[slug]/sync-roles`, which calls the bot's
+ * `business.sync_roles` RPC verb to reconcile every member of this
+ * business with their expected Discord role for their rank.
+ *
+ * Renders nothing for non-owner viewers (matching the API gate — bot
+ * owner does NOT pass this gate either; only the business owner can
+ * trigger the sync). The result strip stays mounted across submits so
+ * the user can see the last reconciliation's counts.
+ */
+export function SyncRolesCard({
+  slug,
+  isOwner,
+}: {
+  slug: string
+  isOwner: boolean
+}): React.JSX.Element | null {
+  type SyncResult =
+    | { ok: true; data: { added: number; removed: number; skipped: string[] } }
+    | { ok: false; error: string }
+
+  const [result, setResult] = useState<SyncResult | null>(null)
+
+  if (!isOwner) return null
+
+  return (
+    <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
+      <h2 className="text-xs uppercase tracking-wider text-ink-dim">
+        Sync roles to Discord
+      </h2>
+      <p className="text-sm text-ink-dim">
+        Walks every member of this business and grants the Discord role
+        matching their rank (owner / manager / employee). Removes any
+        wrong-rank base role they happen to hold. Custom roles are left
+        alone. Owner-only.
+      </p>
+      {result && result.ok && (
+        <div
+          role="status"
+          className="rounded-md border border-ok/40 bg-ok/10 px-3 py-2 text-sm text-ok"
+        >
+          Added {result.data.added}, removed {result.data.removed}, skipped{' '}
+          {result.data.skipped.length} members.
+          {result.data.skipped.length > 0 && (
+            <span className="block mt-1 text-xs text-ink-dim font-mono break-all">
+              Skipped: {result.data.skipped.join(', ')}
+            </span>
+          )}
+        </div>
+      )}
+      {result && !result.ok && (
+        <div
+          role="alert"
+          className="rounded-md border border-err/40 bg-err/10 px-3 py-2 text-sm text-err"
+        >
+          {result.error}
+        </div>
+      )}
+      <ServerForm
+        action={`/api/otter/businesses/${slug}/sync-roles`}
+        method="POST"
+        confirm="This will adjust Discord roles for all members of this business. Proceed?"
+        onSuccess={(data) => {
+          if (
+            data &&
+            typeof data === 'object' &&
+            (data as { ok?: unknown }).ok === true
+          ) {
+            const d = (data as { data: { added: number; removed: number; skipped: string[] } }).data
+            setResult({ ok: true, data: d })
+          } else if (data && typeof data === 'object') {
+            const err = (data as { error?: unknown }).error
+            setResult({
+              ok: false,
+              error: typeof err === 'string' ? err : 'unknown-error',
+            })
+          } else {
+            setResult({ ok: false, error: 'bad-reply' })
+          }
+        }}
+        className="flex justify-start"
+      >
+        <button
+          type="submit"
+          className="rounded-lg border border-accent/40 bg-accent/15 hover:bg-accent/25 px-4 py-2 text-sm text-accent font-medium"
+        >
+          Sync roles to Discord
+        </button>
+      </ServerForm>
+    </section>
+  )
+}
+
 export function RoleMappingsCard({
   slug,
   mappings,
