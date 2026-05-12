@@ -5,6 +5,15 @@ on:
     branches: [main, dev]
   workflow_dispatch:
 
+# Cancel any in-progress run when a newer push lands on the same branch.
+# Builds are purely build-and-push (no deploy step — watchtower handles
+# deploy by polling GHCR), so a cancelled mid-build is safe and the
+# newer commit will produce the next image anyway. Cuts CI noise +
+# notification volume on rapid hot-fix pushes.
+concurrency:
+  group: deploy-botpanel-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify-schemas:
     runs-on: ubuntu-latest
