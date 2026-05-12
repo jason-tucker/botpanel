@@ -108,6 +108,7 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/otter/businesses', label: 'Businesses' },
       ...(showMke ? [{ href: '/otter/mke', label: 'MKE' }] : []),
       { href: '/otter/oc-stock', label: 'OC Stock' },
+      { href: '/otter/caked', label: 'Caked' },
     ],
   }
   // "Admin Home" (/sudo) and "Debug" (/sudo/debug) are rendered only for

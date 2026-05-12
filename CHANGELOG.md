@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **`/otter/caked` Caked messaging page.** Manager-only post-to-channel page for contact / event / pricing / announcement cards. Routes through the bot's `caked.message_post` verb (renderers shared with `/caked` slash command). Audited as `caked.posted`.
 - **`/otter/businesses/[slug]` gains hire/fire/promote/demote.** Four new write routes under `/api/otter/businesses/[slug]/employees/*` go through the matching bot verbs. Owner-only for hiring an owner, manager-or-owner for the rest. Each action audited with `before`/`after` rank.
 - **`/otter/oc-stock` Post-to-channel.** New button posts the live stock card to a Discord channel via the bot's `oc.stock_post` verb. Available to anyone with an OC role mapping. Audited as `oc.stock_posted` with the resulting `{messageId, channelId}`.
 - **`/otter/businesses/[slug]` gains a Sync Roles button (owner-only).** POSTs to `/api/otter/businesses/[slug]/sync-roles`, which calls the new bot-side `business.sync_roles` verb. Audited as `business.sync_roles` with the `{added, removed, skipped}` payload.
