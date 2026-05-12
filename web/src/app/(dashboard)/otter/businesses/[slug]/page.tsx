@@ -402,9 +402,17 @@ export default async function BusinessDetailPage(
 
         {/* Recent standings */}
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
-          <h2 className="text-xs uppercase tracking-wider text-ink-dim">
-            Recent standings {standingsR.ok && <span className="text-ink">(last {standingsR.data.length})</span>}
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs uppercase tracking-wider text-ink-dim">
+              Recent standings {standingsR.ok && <span className="text-ink">(last {standingsR.data.length})</span>}
+            </h2>
+            <Link
+              href={`/otter/businesses/${slug}/standings`}
+              className="text-xs text-accent hover:underline whitespace-nowrap"
+            >
+              View all standings →
+            </Link>
+          </div>
           {!standingsR.ok ? (
             <Unavailable what="Standings" />
           ) : standingsR.data.length === 0 ? (
@@ -441,9 +449,17 @@ export default async function BusinessDetailPage(
 
         {/* Recent audit */}
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
-          <h2 className="text-xs uppercase tracking-wider text-ink-dim">
-            Recent audit {auditR.ok && <span className="text-ink">(last {auditR.data.length})</span>}
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs uppercase tracking-wider text-ink-dim">
+              Recent audit {auditR.ok && <span className="text-ink">(last {auditR.data.length})</span>}
+            </h2>
+            <Link
+              href={`/otter/businesses/${slug}/audit`}
+              className="text-xs text-accent hover:underline whitespace-nowrap"
+            >
+              View all audit →
+            </Link>
+          </div>
           {!auditR.ok ? (
             <Unavailable what="Audit" />
           ) : auditR.data.length === 0 ? (
@@ -494,7 +510,15 @@ export default async function BusinessDetailPage(
 
         {/* Notes summary */}
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
-          <h2 className="text-xs uppercase tracking-wider text-ink-dim">Notes summary</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs uppercase tracking-wider text-ink-dim">Notes summary</h2>
+            <Link
+              href={`/otter/businesses/${slug}/notes`}
+              className="text-xs text-accent hover:underline whitespace-nowrap"
+            >
+              View all notes →
+            </Link>
+          </div>
           {!notesR.ok ? (
             <Unavailable what="Notes" />
           ) : notesR.data.length === 0 ? (
@@ -525,7 +549,8 @@ export default async function BusinessDetailPage(
           )}
           <p className="text-xs text-ink-dim italic">
             Note content is gated per-rank; this page only shows aggregate
-            counts. Drill-down lookup lands in a follow-up.
+            counts. Use &ldquo;View all notes&rdquo; for the visibility-gated
+            list.
           </p>
         </section>
       </div>
