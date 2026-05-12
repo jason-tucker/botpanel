@@ -73,6 +73,7 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
 
   const showSquishy = access.squishy.sudo || access.botOwner
   const showOtter = Object.keys(access.otter.businesses).length > 0 || access.botOwner
+  const showMke = access.otter.businesses.mke != null || access.botOwner
   const showSudo = access.squishy.sudo || access.botOwner
 
   // We render top-level links inline (no heading) and grouped links with a
@@ -94,13 +95,20 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/squishy/roles', label: 'Roles' },
       { href: '/squishy/archives', label: 'Archives' },
       { href: '/squishy/voice', label: 'Active Voice' },
+      { href: '/squishy/audit', label: 'Audit log' },
     ],
   }
+  // MKE link sits between Businesses and OC Stock — it's a per-business
+  // staff view, so it reads naturally right after the businesses index.
+  // The link is rendered conditionally below based on `showMke` so users
+  // without an MKE rank don't see a 403-bound link.
   const otterGroup: NavGroup = {
     heading: 'Otter',
     links: [
       { href: '/otter/businesses', label: 'Businesses' },
+      ...(showMke ? [{ href: '/otter/mke', label: 'MKE' }] : []),
       { href: '/otter/oc-stock', label: 'OC Stock' },
+      { href: '/otter/caked', label: 'Caked' },
     ],
   }
   // "Admin Home" (/sudo) and "Debug" (/sudo/debug) are rendered only for
