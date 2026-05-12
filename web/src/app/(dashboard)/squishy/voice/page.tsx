@@ -10,9 +10,13 @@
  *    independently — this just keeps the UI honest.
  *  - Hands off to the client `<VoiceLive />` component which owns the
  *    snapshot fetch + SSE merge loop.
+ *
+ * Layout note: this page lives under the `(dashboard)` route group, so
+ * `<Sidebar>` + the outer `<main>` are owned by the layout — we render a
+ * plain `<div>` here and let the sidebar provide nav (no more "← Dashboard"
+ * back-link in the header).
  */
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { VoiceLive } from './VoiceLive'
@@ -28,13 +32,10 @@ export default async function SquishyVoicePage() {
 
   if (!allowed) {
     return (
-      <main className="min-h-dvh p-6 sm:p-10">
+      <div className="p-6 sm:p-10 pt-16 md:pt-10">
         <div className="max-w-2xl mx-auto flex flex-col gap-6">
-          <header className="flex items-center justify-between">
+          <header>
             <h1 className="text-2xl font-semibold">Active Voice Channels</h1>
-            <Link href="/me" className="text-sm text-ink-dim hover:text-ink">
-              ← Dashboard
-            </Link>
           </header>
           <section className="rounded-2xl border border-line bg-bg-card p-6">
             <div className="text-xs uppercase tracking-wider text-ink-dim mb-2">
@@ -46,21 +47,18 @@ export default async function SquishyVoicePage() {
             </p>
           </section>
         </div>
-      </main>
+      </div>
     )
   }
 
   return (
-    <main className="min-h-dvh p-6 sm:p-10">
+    <div className="p-6 sm:p-10 pt-16 md:pt-10">
       <div className="max-w-4xl mx-auto flex flex-col gap-6">
-        <header className="flex items-center justify-between">
+        <header>
           <h1 className="text-2xl font-semibold">Active Voice Channels</h1>
-          <Link href="/me" className="text-sm text-ink-dim hover:text-ink">
-            ← Dashboard
-          </Link>
         </header>
         <VoiceLive />
       </div>
-    </main>
+    </div>
   )
 }

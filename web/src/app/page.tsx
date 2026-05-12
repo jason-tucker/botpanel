@@ -1,6 +1,15 @@
 import Link from 'next/link'
 import { getSession } from '@/lib/auth/session'
 
+/**
+ * Public home / sign-in card.
+ *
+ * Stays at the root layout (NOT inside the `(dashboard)` route group) so
+ * unauthenticated visitors don't trip the dashboard layout's session
+ * redirect. For signed-in viewers we just show an "Open dashboard" CTA —
+ * the actual nav now lives in the sidebar inside the dashboard shell, so
+ * there's no need to mirror every link here.
+ */
 const ERROR_MESSAGES: Record<string, string> = {
   missing_params: 'Discord didn’t return an auth code. Try again, and make sure to click Authorize on the consent screen.',
   bad_state: 'OAuth state mismatch — the sign-in took too long or was tampered with. Try again.',
@@ -29,17 +38,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
               <div className="text-sm text-ink-dim">Signed in as</div>
               <div className="font-medium">{session.username}</div>
             </div>
-            <Link href="/me" className="inline-flex items-center justify-center rounded-lg bg-accent text-white font-semibold px-4 py-2.5">
-              Open dashboard
-            </Link>
             <Link
-              href="/squishy/voice"
-              className="inline-flex items-center justify-center rounded-lg border border-line bg-bg-card2 text-ink font-medium px-4 py-2.5 hover:bg-bg-card"
+              href="/me"
+              className="inline-flex items-center justify-center rounded-lg bg-accent text-white font-semibold px-4 py-2.5"
             >
-              Active Voice Channels
-            </Link>
-            <Link href="/audit" className="inline-flex items-center justify-center rounded-lg border border-line bg-bg-card2 text-ink font-medium px-4 py-2.5">
-              Audit tail (sudo)
+              Open dashboard
             </Link>
             <form action="/api/auth/logout" method="POST">
               <button type="submit" className="w-full rounded-lg border border-line bg-transparent text-ink-dim px-4 py-2.5">
