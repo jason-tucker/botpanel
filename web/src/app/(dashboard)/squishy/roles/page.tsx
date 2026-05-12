@@ -1,10 +1,22 @@
 /**
- * /squishy/roles — read-only Role-management overview.
+ * /squishy/roles — Role-management overview + write controls.
  *
  * Server component. Sudo-gated (Squishy sudo OR bot owner). One page that
  * surfaces the three role-management surfaces Squishy currently exposes via
  * `/sudo → Settings` in Discord, so a viewer doesn't have to scroll through
- * three different modals to inspect the current state:
+ * three different modals to inspect the current state.
+ *
+ * Wave 6: the auto-join and color tabs now ALSO carry sudo-gated write
+ * controls — an "Add role" / "Add color role" form at the top and per-row
+ * Remove / Edit-label buttons. Writes land in `auto_join_roles` and
+ * `color_roles`; the bot reads both tables live on `guildMemberAdd` and
+ * `/color`, so DB writes take effect with no cache step. Reaction-role
+ * writes stay deferred — creating one means POSTing in Discord, which
+ * needs the V2.5 command bus. See `./RolesWriteUI.tsx` for the client
+ * islands and `web/src/app/api/squishy/{auto-join-roles,color-roles}/` for
+ * the API surface.
+ *
+ * The three surfaces:
  *
  *   1. **Auto-join roles** (`auto_join_roles`) — roles applied to every new
  *      member on `guildMemberAdd`. Gated by `feature.auto_role_on_join`.
@@ -45,6 +57,13 @@ import {
   discordMessageUrl,
   relTime,
 } from '@/lib/util/format'
+import {
+  AddAutoJoinForm,
+  AddColorRoleForm,
+  EditColorRoleForm,
+  RemoveAutoJoinButton,
+  RemoveColorRoleButton,
+} from './RolesWriteUI'
 
 export const dynamic = 'force-dynamic'
 
@@ -223,101 +242,139 @@ function EmptyCard({ children }: { children: React.ReactNode }) {
   )
 }
 
-function AutoJoinTab({ rows }: { rows: AutoJoinRow[] | null }) {
+function AutoJoinTab({
+  rows,
+  canWrite,
+}: {
+  rows: AutoJoinRow[] | null
+  canWrite: boolean
+}) {
   if (rows === null) return <UnavailableCard what="auto-join roles" />
-  if (rows.length === 0) {
-    return (
-      <EmptyCard>
-        No auto-join roles. Add via{' '}
-        <code className="font-mono text-xs">/sudo → Settings → Auto Roles</code>
-        .
-      </EmptyCard>
-    )
-  }
   return (
-    <div className="rounded-xl border border-line bg-bg-card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-bg-card2 text-xs uppercase tracking-wider text-ink-dim">
-            <tr>
-              <th className="px-3 py-2 font-medium">Role ID</th>
-              <th className="px-3 py-2 font-medium">Added by</th>
-              <th className="px-3 py-2 font-medium">Added</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr
-                key={r.roleId}
-                className="border-b border-line last:border-b-0"
-              >
-                <td className="px-3 py-2">
-                  <RoleMono roleId={r.roleId} />
-                </td>
-                <td className="px-3 py-2">
-                  {r.addedByUserId ? (
-                    <span
-                      className="font-mono text-xs"
-                      title="Discord mention syntax"
-                    >{`<@${r.addedByUserId}>`}</span>
-                  ) : (
-                    <span className="text-ink-dim">—</span>
+    <div className="flex flex-col gap-4">
+      {canWrite && <AddAutoJoinForm />}
+      {rows.length === 0 ? (
+        <EmptyCard>
+          No auto-join roles. Add one via the form above or via{' '}
+          <code className="font-mono text-xs">
+            /sudo → Settings → Auto Roles
+          </code>
+          .
+        </EmptyCard>
+      ) : (
+        <div className="rounded-xl border border-line bg-bg-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-bg-card2 text-xs uppercase tracking-wider text-ink-dim">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Role ID</th>
+                  <th className="px-3 py-2 font-medium">Added by</th>
+                  <th className="px-3 py-2 font-medium">Added</th>
+                  {canWrite && (
+                    <th className="px-3 py-2 font-medium text-right">
+                      Actions
+                    </th>
                   )}
-                </td>
-                <td
-                  className="px-3 py-2 text-xs text-ink-dim whitespace-nowrap"
-                  title={r.addedAt.toISOString()}
-                >
-                  {relTime(r.addedAt)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr
+                    key={r.roleId}
+                    className="border-b border-line last:border-b-0"
+                  >
+                    <td className="px-3 py-2">
+                      <RoleMono roleId={r.roleId} />
+                    </td>
+                    <td className="px-3 py-2">
+                      {r.addedByUserId ? (
+                        <span
+                          className="font-mono text-xs"
+                          title="Discord mention syntax"
+                        >{`<@${r.addedByUserId}>`}</span>
+                      ) : (
+                        <span className="text-ink-dim">—</span>
+                      )}
+                    </td>
+                    <td
+                      className="px-3 py-2 text-xs text-ink-dim whitespace-nowrap"
+                      title={r.addedAt.toISOString()}
+                    >
+                      {relTime(r.addedAt)}
+                    </td>
+                    {canWrite && (
+                      <td className="px-3 py-2 text-right">
+                        <RemoveAutoJoinButton roleId={r.roleId} />
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function ColorTab({ rows }: { rows: ColorRow[] | null }) {
+function ColorTab({
+  rows,
+  canWrite,
+}: {
+  rows: ColorRow[] | null
+  canWrite: boolean
+}) {
   if (rows === null) return <UnavailableCard what="color roles" />
-  if (rows.length === 0) {
-    return (
-      <EmptyCard>
-        No curated colors. Add via{' '}
-        <code className="font-mono text-xs">
-          /sudo → Settings → Color Roles
-        </code>
-        .
-      </EmptyCard>
-    )
-  }
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-      {rows.map((r) => (
-        <div
-          key={r.roleId}
-          className="rounded-xl border border-line bg-bg-card p-3 flex flex-col gap-2"
-        >
-          {/* Schema doesn't carry a `hex` column — the bot stores the color
-              on the Discord role itself. We render a neutral swatch as a
-              visual placeholder; the label is the canonical identifier
-              members see in `/color`. */}
-          <div
-            className="w-full h-10 rounded-md border border-line bg-bg-card2"
-            aria-hidden
-          />
-          <div className="text-sm font-medium truncate" title={r.label}>
-            {r.label}
-          </div>
-          <div className="text-[11px] text-ink-dim flex items-center justify-between gap-2">
-            <span className="font-mono truncate" title={r.roleId}>
-              {r.roleId}
-            </span>
-            <span className="tabular-nums shrink-0">#{r.sortOrder}</span>
-          </div>
+    <div className="flex flex-col gap-4">
+      {canWrite && <AddColorRoleForm />}
+      {rows.length === 0 ? (
+        <EmptyCard>
+          No curated colors. Add one via the form above or via{' '}
+          <code className="font-mono text-xs">
+            /sudo → Settings → Color Roles
+          </code>
+          .
+        </EmptyCard>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {rows.map((r) => (
+            <div
+              key={r.roleId}
+              className="rounded-xl border border-line bg-bg-card p-3 flex flex-col gap-2"
+            >
+              {/* Schema doesn't carry a `hex` column — the bot stores the
+                  color on the Discord role itself. We render a neutral swatch
+                  as a visual placeholder; the label is the canonical identifier
+                  members see in `/color`. */}
+              <div
+                className="w-full h-10 rounded-md border border-line bg-bg-card2"
+                aria-hidden
+              />
+              <div className="text-sm font-medium truncate" title={r.label}>
+                {r.label}
+              </div>
+              <div className="text-[11px] text-ink-dim flex items-center justify-between gap-2">
+                <span className="font-mono truncate" title={r.roleId}>
+                  {r.roleId}
+                </span>
+                <span className="tabular-nums shrink-0">#{r.sortOrder}</span>
+              </div>
+              {canWrite && (
+                <div className="flex flex-col gap-1 mt-1">
+                  <EditColorRoleForm
+                    roleId={r.roleId}
+                    label={r.label}
+                    sortOrder={r.sortOrder}
+                  />
+                  <RemoveColorRoleButton roleId={r.roleId} />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -543,7 +600,7 @@ export default async function SquishyRolesPage({
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold">Roles</h1>
             <p className="text-sm text-ink-dim">
-              Read-only view of auto-join roles, curated color roles, and
+              Manage auto-join roles and curated color roles; read-only view of
               reaction-role messages.
             </p>
           </div>
@@ -576,10 +633,19 @@ export default async function SquishyRolesPage({
           />
         </nav>
 
-        {tab === 'join' && <AutoJoinTab rows={autoJoinRows} />}
-        {tab === 'color' && <ColorTab rows={colorRows} />}
+        {tab === 'join' && (
+          <AutoJoinTab rows={autoJoinRows} canWrite={allowed} />
+        )}
+        {tab === 'color' && <ColorTab rows={colorRows} canWrite={allowed} />}
         {tab === 'reaction' && (
           <ReactionTab rows={reactionRows} guildId={guildId} />
+        )}
+        {tab === 'reaction' && allowed && (
+          <div className="text-[11px] text-ink-dim">
+            Reaction-role writes stay read-only here in MVP — creating a
+            reaction-role message means posting in Discord, which needs the
+            V2.5 command bus.
+          </div>
         )}
 
         {tab === 'reaction' && !guildId && reactionRows && reactionRows.length > 0 && (
