@@ -46,6 +46,14 @@ export type ServerFormProps = {
    * Cancel → submit is aborted, no state change. Used for destructive actions.
    */
   confirm?: string
+  /**
+   * Resolve the action URL dynamically from the form's current state at
+   * submit time. Useful when the URL depends on a user-typed field (e.g.
+   * an "Add new setting" form where the key is part of the path). Return
+   * `null` to abort the submit silently (e.g. the required field is blank).
+   * When set, this overrides `action` per-submit.
+   */
+  onResolveAction?: (form: HTMLFormElement) => string | null
   className?: string
   children: ReactNode
 }
@@ -104,7 +112,7 @@ function readErrorMessage(parsed: unknown, fallback: string): string {
 }
 
 export function ServerForm(props: ServerFormProps): React.JSX.Element {
-  const { action, method = 'POST', onSuccess, resetOnSuccess, confirm: confirmMsg, className, children } = props
+  const { action, method = 'POST', onSuccess, resetOnSuccess, confirm: confirmMsg, onResolveAction, className, children } = props
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const formRef = useRef<HTMLFormElement | null>(null)
@@ -114,10 +122,16 @@ export function ServerForm(props: ServerFormProps): React.JSX.Element {
       ev.preventDefault()
       if (submitting) return
       if (confirmMsg && typeof window !== 'undefined' && !window.confirm(confirmMsg)) return
+
+      const form = ev.currentTarget
+      // Resolve dynamic action URL (e.g. "Add new setting" where the URL
+      // depends on a typed field). null → abort silently.
+      const resolvedAction = onResolveAction ? onResolveAction(form) : action
+      if (resolvedAction === null) return
+
       setError(null)
       setSubmitting(true)
 
-      const form = ev.currentTarget
       const data = new FormData(form)
       // Was a `_format=json` hint dropped into the form? If so, we
       // ship JSON; otherwise stay with form-encoded.
@@ -156,7 +170,7 @@ export function ServerForm(props: ServerFormProps): React.JSX.Element {
           headers['content-type'] = 'application/x-www-form-urlencoded'
         }
 
-        return fetch(action, {
+        return fetch(resolvedAction, {
           method,
           headers,
           body,
@@ -204,7 +218,7 @@ export function ServerForm(props: ServerFormProps): React.JSX.Element {
         setSubmitting(false)
       }
     },
-    [action, method, onSuccess, resetOnSuccess, confirmMsg, submitting],
+    [action, method, onSuccess, resetOnSuccess, confirmMsg, onResolveAction, submitting],
   )
 
   return (
