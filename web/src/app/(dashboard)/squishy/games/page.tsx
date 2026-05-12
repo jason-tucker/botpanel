@@ -1,5 +1,5 @@
 /**
- * /squishy/games — read-only Games overview.
+ * /squishy/games — Games overview + sudo CRUD.
  *
  * Server component. Sudo-gated (Squishy sudo OR bot owner). Lists every row
  * in the `games` table with its per-game settings (view role, ping role,
@@ -7,6 +7,16 @@
  * `user_game_prefs`. We compute the View / Ping counts in a single grouped
  * query and zip them into the games list in TS so the row's a single
  * Drizzle call. If the DB is unreachable we render an explicit error state.
+ *
+ * Wave 7b: the page is now editable. Top-of-page "Add game" form POSTs to
+ * /api/squishy/games; each row has a collapsible inline Edit form that
+ * PATCHes /api/squishy/games/[id]; each row has a flip-to-confirm Remove
+ * that DELETEs the row and cascade-clears its user_game_prefs in the same
+ * SQL transaction. Every successful write fires a fire-and-forget
+ * `games.refresh_cache` RPC at the bot so its in-memory `catalog` reloads
+ * — but a bot-side failure does NOT fail the panel-side write. The bot
+ * reads the games table live for /play / /games regardless. See
+ * `./GamesWriteUI.tsx` for the client islands.
  *
  * The schema names the visibility role `role_id` (kept loosely as the bot
  * evolved); the spec refers to it as "view role" — same column.
@@ -20,6 +30,7 @@ import { env } from '@/lib/env'
 import { squishyDb } from '@/lib/db/squishy'
 import { games, userGamePrefs } from '@/lib/db/schema/squishy'
 import { discordChannelUrl, formatDuration, relTime } from '@/lib/util/format'
+import { AddGameForm, EditGameForm, RemoveGameButton } from './GamesWriteUI'
 
 export const dynamic = 'force-dynamic'
 
@@ -129,13 +140,17 @@ export default async function SquishyGamesPage() {
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold">Games</h1>
             <p className="text-sm text-ink-dim">
-              Read-only view of every configured game and its opt-in counts.
+              Manage every configured game. The bot reads this table live for
+              /play and /games; the panel pings a cache-refresh hook after
+              every write so the in-memory catalog stays current.
             </p>
           </div>
           <Link href="/me" className="text-sm text-ink-dim hover:text-ink whitespace-nowrap">
             ← Dashboard
           </Link>
         </header>
+
+        <AddGameForm />
 
         {list === null ? (
           <div className="rounded-xl border border-line bg-bg-card p-6 text-sm text-err">
@@ -167,13 +182,14 @@ export default async function SquishyGamesPage() {
                     <th className="px-3 py-2 font-medium">/play cooldown</th>
                     <th className="px-3 py-2 font-medium">Auto-archive</th>
                     <th className="px-3 py-2 font-medium">Created</th>
+                    <th className="px-3 py-2 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {list.map((g) => {
                     const channelUrl = discordChannelUrl(guildId, g.channelId)
                     return (
-                      <tr key={g.id} className="border-b border-line last:border-b-0">
+                      <tr key={g.id} className="border-b border-line last:border-b-0 align-top">
                         <td className="px-3 py-2 text-sm whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{g.name}</span>
@@ -193,6 +209,18 @@ export default async function SquishyGamesPage() {
                               aka {g.aliases.join(', ')}
                             </div>
                           )}
+                          {/* Inline edit form lives under the row's name cell so
+                              its collapsed state is one button + 1 line of label.
+                              Spans the full row when expanded via max-w. */}
+                          <EditGameForm
+                            id={g.id}
+                            name={g.name}
+                            channelId={g.channelId}
+                            roleId={g.roleId}
+                            pingRoleId={g.pingRoleId}
+                            playCooldownSeconds={g.playCooldownSeconds}
+                            autoArchiveDays={g.autoArchiveDays}
+                          />
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <Mono value={g.roleId} />
@@ -238,6 +266,9 @@ export default async function SquishyGamesPage() {
                           title={g.createdAt.toISOString()}
                         >
                           {relTime(g.createdAt)}
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          <RemoveGameButton id={g.id} name={g.name} />
                         </td>
                       </tr>
                     )
