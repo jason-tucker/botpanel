@@ -267,47 +267,6 @@ export function ProfileEditor({ id, mode, profile }: ProfileEditorProps) {
         </p>
       </section>
 
-      {/* Staff fields (sudo only) */}
-      {mode === 'sudo' && (
-        <section className="rounded-2xl border border-line bg-bg-card p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-dim">
-              Staff fields
-            </h2>
-            <span className="text-[10px] uppercase tracking-wider text-accent border border-accent/40 bg-accent/10 rounded-full px-2 py-0.5">
-              Sudo only
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <TextField
-              name="staffCategory"
-              label="Staff category"
-              defaultValue={p.staffCategory ?? ''}
-              maxLength={60}
-              placeholder="e.g. leadership, support"
-            />
-            <TextField
-              name="department"
-              label="Department"
-              defaultValue={p.department ?? ''}
-              maxLength={80}
-            />
-            <TextField
-              name="tier"
-              label="Tier"
-              defaultValue={p.tier ?? ''}
-              maxLength={80}
-            />
-            <TextField
-              name="leadershipTitle"
-              label="Leadership title"
-              defaultValue={p.leadershipTitle ?? ''}
-              maxLength={120}
-            />
-          </div>
-        </section>
-      )}
-
       {/* Actions */}
       <div className="flex items-center justify-end gap-3">
         <button
