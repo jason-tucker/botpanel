@@ -31,10 +31,14 @@ export function getSubscriber(): Redis {
     lazyConnect: true,
     // Cap retry delay at 10s; ioredis multiplies by attempt count.
     retryStrategy: (times) => Math.min(times * 500, 10_000),
-    // We're a subscriber — queued commands during outage are pointless.
-    enableOfflineQueue: false,
-    // Don't let a long outage stall internal commands forever.
-    maxRetriesPerRequest: 1,
+    // Subscriber needs offline-queue ON so the initial psubscribe queues
+    // until the connection is ready (lazyConnect means it's not ready
+    // at module load). The queue is bounded to subscriber commands only
+    // and fires once on 'ready' — no memory leak risk.
+    enableOfflineQueue: true,
+    // maxRetriesPerRequest is incompatible with subscriber mode (you
+    // can't issue regular commands after psubscribe, so retrying them
+    // means nothing). Leave at default (null = retry indefinitely).
   }
 
   const r = new Redis(env.REDIS_URL, opts)
