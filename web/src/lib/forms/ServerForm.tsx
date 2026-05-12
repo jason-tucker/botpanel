@@ -39,6 +39,8 @@ export type ServerFormProps = {
   action: string
   method?: 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   onSuccess?: (data: unknown) => void
+  /** Call form.reset() after a successful submit. Useful for "add new" forms. */
+  resetOnSuccess?: boolean
   className?: string
   children: ReactNode
 }
@@ -97,7 +99,7 @@ function readErrorMessage(parsed: unknown, fallback: string): string {
 }
 
 export function ServerForm(props: ServerFormProps): React.JSX.Element {
-  const { action, method = 'POST', onSuccess, className, children } = props
+  const { action, method = 'POST', onSuccess, resetOnSuccess, className, children } = props
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const formRef = useRef<HTMLFormElement | null>(null)
@@ -185,6 +187,7 @@ export function ServerForm(props: ServerFormProps): React.JSX.Element {
         }
 
         if (res.ok) {
+          if (resetOnSuccess) form.reset()
           if (onSuccess) onSuccess(parsed)
         } else {
           setError(readErrorMessage(parsed, `Request failed (${res.status})`))
