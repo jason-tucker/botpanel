@@ -77,6 +77,30 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  redis:
+    # Single Redis used as both the event bus (bots → panel) AND the command
+    # bus (panel → bots, V2+). Internal only — no host port.
+    # Bots reach it as `redis:6379` over the shared botpanel-net network.
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    expose:
+      - "6379"
+    networks:
+      - botpanel-net
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   watchtower:
     # Auto-pull-and-restart any container labeled `com.centurylinklabs.watchtower.enable=true`
     # when its image tag (e.g. :latest, :dev) gets a new push to GHCR. Polls every 30s.
@@ -107,6 +131,9 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+volumes:
+  redis_data:
 
 networks:
   botpanel-net:
