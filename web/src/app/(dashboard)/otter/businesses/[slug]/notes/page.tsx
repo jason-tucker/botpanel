@@ -26,6 +26,7 @@ import { otterDb } from '@/lib/db/otter'
 import { businesses } from '@/lib/db/schema/otter/businesses'
 import { notes } from '@/lib/db/schema/otter/notes'
 import { relTime } from '@/lib/util/otterFormat'
+import { AddNoteForm, DeleteNoteButton } from './NoteForms'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +68,29 @@ function allowedVisibilities(
   if (rank === 'manager') return ['staff', 'manager']
   if (rank === 'employee') return ['staff']
   return []
+}
+
+/**
+ * Highest visibility a viewer can AUTHOR at. Mirrors the API gate in
+ * `/api/otter/businesses/[slug]/notes/route.ts` so the form select only
+ * surfaces tiers the user will actually be allowed to submit.
+ */
+function maxWritableVisibility(
+  rank: BusinessRank | null,
+  botOwner: boolean,
+): NoteVisibility | null {
+  if (botOwner) return 'owner'
+  if (rank === 'owner') return 'owner'
+  if (rank === 'manager') return 'manager'
+  if (rank === 'employee') return 'staff'
+  return null
+}
+
+const VISIBILITY_LADDER: NoteVisibility[] = ['staff', 'manager', 'owner']
+
+function visibilitiesUpTo(ceiling: NoteVisibility): NoteVisibility[] {
+  const idx = VISIBILITY_LADDER.indexOf(ceiling)
+  return VISIBILITY_LADDER.slice(0, idx + 1)
 }
 
 async function loadBusiness(slug: string): Promise<BusinessRow | null> {
@@ -191,7 +215,15 @@ function ForbiddenCard({ slug }: { slug: string }) {
   )
 }
 
-function NoteCard({ note }: { note: NoteRow }) {
+function NoteCard({
+  note,
+  slug,
+  canDelete,
+}: {
+  note: NoteRow
+  slug: string
+  canDelete: boolean
+}) {
   const long = note.content.length > 320
   return (
     <li className="rounded-lg border border-line bg-bg-card2 px-4 py-3 flex flex-col gap-2">
@@ -211,6 +243,7 @@ function NoteCard({ note }: { note: NoteRow }) {
         >
           {relTime(note.createdAt)}
         </span>
+        {canDelete && <DeleteNoteButton slug={slug} noteId={note.id} />}
       </div>
       <div className="text-xs text-ink-dim font-mono flex flex-wrap items-center gap-2">
         <span>by {note.authorName}</span>
@@ -273,6 +306,12 @@ export default async function BusinessNotesPage(
     return <ForbiddenCard slug={slug} />
   }
 
+  const writeCeiling = maxWritableVisibility(explicitRank, access.botOwner)
+  const writableVisibilities = writeCeiling
+    ? visibilitiesUpTo(writeCeiling)
+    : []
+  const isBusinessOwner = explicitRank === 'owner'
+
   const rawPage = Number(sp.page ?? '1')
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1
   const q = (sp.q ?? '').trim() || null
@@ -309,6 +348,18 @@ export default async function BusinessNotesPage(
             Visibility tiers you can see: {visibilities.join(', ')}.
           </p>
         </header>
+
+        {writableVisibilities.length > 0 && (
+          <section className="rounded-xl border border-line bg-bg-card p-4 flex flex-col gap-3">
+            <header className="flex items-baseline justify-between gap-3 flex-wrap">
+              <h2 className="text-base font-semibold">Add note</h2>
+              <p className="text-xs text-ink-dim">
+                Authoring is capped at your rank: {writableVisibilities.join(', ')}.
+              </p>
+            </header>
+            <AddNoteForm slug={slug} writableVisibilities={writableVisibilities} />
+          </section>
+        )}
 
         <form
           action={`/otter/businesses/${slug}/notes`}
@@ -349,9 +400,23 @@ export default async function BusinessNotesPage(
         ) : (
           <>
             <ul className="flex flex-col gap-3">
-              {result.rows.map((n) => (
-                <NoteCard key={n.id} note={n} />
-              ))}
+              {result.rows.map((n) => {
+                // Mirror the API's gate: bot owner OR business owner OR the
+                // note's author (compared against `viewing.id` so the button
+                // renders correctly under View-As impersonation).
+                const canDelete =
+                  access.botOwner ||
+                  isBusinessOwner ||
+                  n.authorDiscordId === access.viewing.id
+                return (
+                  <NoteCard
+                    key={n.id}
+                    note={n}
+                    slug={slug}
+                    canDelete={canDelete}
+                  />
+                )
+              })}
             </ul>
             <nav className="flex items-center justify-between px-3 py-2 rounded-lg border border-line bg-bg-card2/40 text-xs text-ink-dim">
               {page > 1 ? (
