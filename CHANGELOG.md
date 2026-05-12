@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Merge-conflict hot fix in `/otter/businesses/[slug]/audit/page.tsx`.** The sequential merge of Wave 7d-C (#109, shared `<AuditTable>` refactor) and Wave 7d-B (#114, `<UserChip>` integration) on the same page left both render trees concatenated, breaking JSX. Resolved by dropping the ad-hoc `<ul>`/`<nav>` block — the new `<AuditTable>` already handles row chips internally per the 7d-C design. Removed now-unused `UserChip` / `relTime` / `resolveUsernames` imports and the `userMap` pre-resolution from this page (the in-row `resolved` Map still pre-fills display names from `audit_logs.actor_name`).
+
 ### Added
 - **`<UserChip>` + `users.resolve` everywhere.** Audit tables, staff approvals, voice rosters now show `@displayName` with a small avatar instead of raw snowflakes. Batch-resolved server-side per page render (5-min in-process cache). Single-id endpoints `/api/{squishy,otter}/users/[id]` for live-updating client surfaces. Falls back to raw id if the bot is unreachable.
 - **Discord resource pickers across all Squishy settings forms.** New `<RolePicker>`, `<ChannelPicker>`, `<MemberPicker>` client components fetch live cache from squishybot via three new `meta.*` RPC verbs (60s panel-side cache for roles/channels; live for member typeahead). All snowflake-text-inputs in Hubs / Games / Reaction Roles / Welcome editors replaced. Falls back to a snowflake input + error banner if the bot is unreachable, so forms still work in degraded mode.
