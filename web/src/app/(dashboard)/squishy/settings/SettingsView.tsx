@@ -10,14 +10,21 @@
  *    insensitive). Filtering happens before grouping so an entire namespace
  *    disappears when none of its keys match — keeps the page short.
  *  - Each namespace renders as a `<details open>` block with key/value/when/by.
- *  - Long values get truncated at 80 chars; full value lives in a hover-
- *    revealed `<details>` (click to expand) and as a `title` attribute so a
- *    quick hover surfaces the rest without disturbing layout.
+ *  - Long values get truncated at 80 chars when read-only; the editable
+ *    surface uses an auto-grow `<textarea>` so the whole value is visible
+ *    in-place.
  *
- * Pure presentation — no fetching, no mutation. The viewer is read-only in
- * this MVP; editing lands in a follow-up PR.
+ * When `canEdit` is true the per-row value cell becomes a `<ServerForm>`
+ * with a Save button (PUT `/api/squishy/settings/<key>`) and a Clear
+ * button (DELETE the same path, with confirm). A top "Add new setting"
+ * card lets sudo add keys that don't exist yet — same PUT endpoint, the
+ * route upserts.
+ *
+ * `<ServerForm>` lives in `@/lib/forms/ServerForm` (agent T's surface):
+ * handles CSRF token injection + render of any 4xx error bodies inline.
  */
 import { useMemo, useState } from 'react'
+import { ServerForm } from '@/lib/forms/ServerForm'
 
 export type SettingRow = {
   key: string
@@ -54,8 +61,150 @@ function namespaceOf(key: string): string {
 }
 
 const TRUNC = 80
+const LONG_THRESHOLD = 60
 
-export function SettingsView({ settings }: { settings: SettingRow[] }) {
+function ValueCell({
+  row,
+  canEdit,
+}: {
+  row: SettingRow
+  canEdit: boolean
+}) {
+  if (!canEdit) {
+    const long = row.value.length > TRUNC
+    const preview = long ? `${row.value.slice(0, TRUNC)}…` : row.value
+    return long ? (
+      <details>
+        <summary
+          className="cursor-pointer list-none hover:text-ink"
+          title={row.value}
+        >
+          {preview}
+        </summary>
+        <pre className="mt-1 whitespace-pre-wrap break-all text-ink">
+          {row.value}
+        </pre>
+      </details>
+    ) : (
+      <span title={row.value}>{row.value}</span>
+    )
+  }
+
+  // Editable surface — auto-grow textarea for long values, plain input
+  // for short ones. The form posts to PUT /api/squishy/settings/<key>;
+  // ServerForm injects CSRF + surfaces inline errors from 4xx bodies.
+  const useTextarea = row.value.length > LONG_THRESHOLD || row.value.includes('\n')
+
+  return (
+    <ServerForm
+      action={`/api/squishy/settings/${encodeURIComponent(row.key)}`}
+      method="PUT"
+      className="flex flex-col gap-2"
+    >
+      {useTextarea ? (
+        <textarea
+          name="value"
+          defaultValue={row.value}
+          rows={Math.min(8, Math.max(2, row.value.split('\n').length))}
+          className="w-full min-w-[20rem] rounded border border-line bg-bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      ) : (
+        <input
+          type="text"
+          name="value"
+          defaultValue={row.value}
+          className="w-full min-w-[20rem] rounded border border-line bg-bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      )}
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          className="rounded border border-line bg-bg-card2 px-2 py-0.5 text-xs text-ink hover:bg-bg-card"
+        >
+          Save
+        </button>
+        <ClearButton settingKey={row.key} />
+      </div>
+    </ServerForm>
+  )
+}
+
+function ClearButton({ settingKey }: { settingKey: string }) {
+  return (
+    <ServerForm
+      action={`/api/squishy/settings/${encodeURIComponent(settingKey)}`}
+      method="DELETE"
+      confirm={`Clear setting "${settingKey}"? This deletes the override; the bot will fall back to its env/code default.`}
+      className="inline"
+    >
+      <button
+        type="submit"
+        className="rounded border border-err/30 bg-err/10 px-2 py-0.5 text-xs text-err hover:bg-err/20"
+      >
+        Clear
+      </button>
+    </ServerForm>
+  )
+}
+
+function AddSettingForm() {
+  return (
+    <ServerForm
+      action="/api/squishy/settings/__new__"
+      method="PUT"
+      // Rewrite action client-side once the key field is filled — we still
+      // need *some* placeholder so the form is valid HTML, and ServerForm
+      // re-resolves the action on submit. Plain JS fallback below.
+      onResolveAction={(form: HTMLFormElement) => {
+        const k = (form.elements.namedItem('key') as HTMLInputElement | null)?.value?.trim()
+        if (!k) return null
+        return `/api/squishy/settings/${encodeURIComponent(k)}`
+      }}
+      className="rounded-xl border border-line bg-bg-card p-3 flex flex-col gap-3"
+    >
+      <div className="flex flex-col gap-1">
+        <label className="text-xs uppercase tracking-wider text-ink-dim">
+          Add new setting
+        </label>
+        <p className="text-xs text-ink-dim">
+          Key shape: lowercase + dots (e.g. <code className="font-mono">feature.foo</code>).
+          Stored in <code className="font-mono">bot_settings</code>; the bot reads from here
+          before falling back to env / defaults.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="text"
+          name="key"
+          placeholder="feature.example"
+          required
+          className="w-56 rounded border border-line bg-bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+        <input
+          type="text"
+          name="value"
+          placeholder="value"
+          required
+          className="flex-1 min-w-[14rem] rounded border border-line bg-bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+        <button
+          type="submit"
+          className="rounded border border-line bg-bg-card2 px-3 py-1 text-xs text-ink hover:bg-bg-card"
+        >
+          Add
+        </button>
+      </div>
+    </ServerForm>
+  )
+}
+
+export function SettingsView({
+  settings,
+  canEdit = false,
+}: {
+  settings: SettingRow[]
+  canEdit?: boolean
+}) {
   const [search, setSearch] = useState('')
 
   const filteredGroups = useMemo(() => {
@@ -86,6 +235,8 @@ export function SettingsView({ settings }: { settings: SettingRow[] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {canEdit && <AddSettingForm />}
+
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-bg-card p-3">
         <input
           type="search"
@@ -139,43 +290,25 @@ export function SettingsView({ settings }: { settings: SettingRow[] }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => {
-                      const long = r.value.length > TRUNC
-                      const preview = long ? `${r.value.slice(0, TRUNC)}…` : r.value
-                      return (
-                        <tr key={r.key} className="border-t border-line align-top">
-                          <td className="px-3 py-2 font-mono text-xs text-ink whitespace-nowrap">
-                            {r.key}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs text-ink-dim break-all">
-                            {long ? (
-                              <details>
-                                <summary
-                                  className="cursor-pointer list-none hover:text-ink"
-                                  title={r.value}
-                                >
-                                  {preview}
-                                </summary>
-                                <pre className="mt-1 whitespace-pre-wrap break-all text-ink">
-                                  {r.value}
-                                </pre>
-                              </details>
-                            ) : (
-                              <span title={r.value}>{r.value}</span>
-                            )}
-                          </td>
-                          <td
-                            className="px-3 py-2 text-xs text-ink-dim whitespace-nowrap"
-                            title={r.updatedAt}
-                          >
-                            {relTime(r.updatedAt)}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs text-ink-dim whitespace-nowrap">
-                            {r.updatedByDiscordId ? `<@${r.updatedByDiscordId}>` : '—'}
-                          </td>
-                        </tr>
-                      )
-                    })}
+                    {rows.map((r) => (
+                      <tr key={r.key} className="border-t border-line align-top">
+                        <td className="px-3 py-2 font-mono text-xs text-ink whitespace-nowrap">
+                          {r.key}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-ink-dim break-all">
+                          <ValueCell row={r} canEdit={canEdit} />
+                        </td>
+                        <td
+                          className="px-3 py-2 text-xs text-ink-dim whitespace-nowrap"
+                          title={r.updatedAt}
+                        >
+                          {relTime(r.updatedAt)}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-ink-dim whitespace-nowrap">
+                          {r.updatedByDiscordId ? `<@${r.updatedByDiscordId}>` : '—'}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

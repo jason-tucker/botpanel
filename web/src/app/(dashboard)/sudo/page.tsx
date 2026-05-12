@@ -34,6 +34,7 @@ import {
   reportLog,
 } from '@/lib/db/schema/squishy'
 import { relTime } from '@/lib/util/format'
+import { AddSudoUserForm, RevokeButton } from './SudoUserControls'
 
 export const dynamic = 'force-dynamic'
 
@@ -308,6 +309,7 @@ export default async function SudoHomePage() {
               (<code className="font-mono">sudo_users</code>) merged.
             </p>
           </header>
+          <AddSudoUserForm />
           {sudoRows === null ? (
             <div className="p-4">
               <DataUnavailable what="Sudo users" />
@@ -316,7 +318,7 @@ export default async function SudoHomePage() {
             <div className="p-4 text-sm text-ink-dim">
               No sudo users configured. Set{' '}
               <code className="font-mono text-xs">SUDO_USER_IDS</code> in
-              the panel env or add a row to the{' '}
+              the panel env or add a row above to populate the{' '}
               <code className="font-mono text-xs">sudo_users</code> table.
             </div>
           ) : (
@@ -329,6 +331,7 @@ export default async function SudoHomePage() {
                     <th className="px-3 py-2 font-medium">Added by</th>
                     <th className="px-3 py-2 font-medium">Added</th>
                     <th className="px-3 py-2 font-medium">Note</th>
+                    <th className="px-3 py-2 font-medium w-px"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -358,6 +361,18 @@ export default async function SudoHomePage() {
                       </td>
                       <td className="px-3 py-2 text-xs text-ink-dim">
                         {r.note ?? <span className="italic">—</span>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-right">
+                        {r.source === 'db' ? (
+                          <RevokeButton userId={r.userId} />
+                        ) : (
+                          <span
+                            className="text-[10px] italic text-ink-dim"
+                            title="Env-source grants come from SUDO_USER_IDS and can't be revoked here"
+                          >
+                            env-only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

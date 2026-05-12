@@ -94,9 +94,8 @@ export default async function SquishySettingsPage() {
             <p className="text-sm text-ink-dim">
               Read-only dump of every row in{' '}
               <code className="font-mono text-xs">bot_settings</code>. Grouped
-              by namespace (first dot-segment of the key). Edits land in a
-              follow-up — for now, change values via the bot’s{' '}
-              <code className="font-mono text-xs">/sudo</code> command.
+              by namespace (first dot-segment of the key). Sudo + bot-owner
+              viewers can edit values inline; everyone else gets read-only.
             </p>
           </div>
           <Link href="/me" className="text-sm text-ink-dim hover:text-ink">
@@ -111,7 +110,7 @@ export default async function SquishySettingsPage() {
           </div>
         )}
 
-        <SettingsView settings={rows} />
+        <SettingsView settings={rows} canEdit={allowed} />
       </div>
     </main>
   )
