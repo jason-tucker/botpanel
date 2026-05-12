@@ -17,14 +17,16 @@
  *                        showing key, old → new (truncated), actor, when.
  *
  * Gating: bot-owner only. Squishy sudo (without owner) sees the same 403
- * card pattern the Admin Home uses — Debug is owner-only in MVP because
- * write-side controls (force-clear caches, orphan scan, flag toggles) land
- * here in V2 once the Redis command bus exists, and we want the read path
- * to share the same gate as the eventual write path so we don't accidentally
- * widen the audience on the V2 cutover.
+ * card pattern the Admin Home uses — Debug is owner-only because write
+ * actions land here too (Wave 7b: reload caches, orphan scan, reconciler
+ * run) and we want the read path to share the same gate as the write path
+ * so a sudo grant can't accidentally widen access on a later cutover.
  *
- * Read-only for now — no buttons. The bottom footer notes the V2 actions
- * that'll land here once the command bus is wired.
+ * Write surface (Wave 7b): `<AdminOpsCard>` renders three buttons that
+ * POST to `/api/sudo/admin/{reload-caches, orphan-scan, reconciler}`
+ * which forward to the bot via `callBot('squishy', 'admin.*', {})`. Each
+ * route is bot-owner gated + CSRF + rate-limited 5/min/actor, and audits
+ * to `admin.caches_reloaded` / `admin.orphan_scan_run` / `admin.reconciler_run`.
  */
 import { redirect } from 'next/navigation'
 import { desc, like } from 'drizzle-orm'
@@ -34,6 +36,7 @@ import { squishyDb } from '@/lib/db/squishy'
 import { botSettings, settingChanges } from '@/lib/db/schema/squishy'
 import { getHeartbeats } from '@/lib/heartbeats'
 import { relTime } from '@/lib/util/format'
+import { AdminOpsCard } from './AdminOpsCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -144,16 +147,16 @@ function NotAuthorizedCard({ isSudo }: { isSudo: boolean }) {
         <p className="text-ink-dim text-sm">
           {isSudo ? (
             <>
-              Debug Snapshot is bot-owner-only in MVP. V2 will add write
-              actions (force-clear caches, orphan scan, feature-flag
-              toggles) — keeping the read path gated to the same audience
-              now so we don&apos;t silently widen access on the cutover.
+              Debug Snapshot is bot-owner-only. The write actions (reload
+              caches, orphan scan, run reconciler) hit the bot directly
+              over the command bus, so we keep the read path gated to the
+              same audience — sudo grants don&apos;t cover this view.
             </>
           ) : (
             <>
               Debug Snapshot is bot-owner-only. If you think you should
               have access, ask the bot owner — sudo grants don&apos;t
-              cover this view in MVP.
+              cover this view.
             </>
           )}
         </p>
@@ -271,6 +274,9 @@ export default async function DebugSnapshotPage() {
             Live runtime introspection — bot-owner only.
           </p>
         </header>
+
+        {/* --- Admin ops (Wave 7b) ----------------------------------- */}
+        <AdminOpsCard />
 
         {/* --- Feature flags ----------------------------------------- */}
         <section className="rounded-xl border border-line bg-bg-card overflow-hidden">
@@ -440,11 +446,6 @@ export default async function DebugSnapshotPage() {
           )}
         </section>
 
-        <footer className="text-xs text-ink-dim/80">
-          Force-clear caches, Orphan scan, and feature-flag toggles land in
-          V2 once the Redis command bus is wired. This view is read-only
-          for now.
-        </footer>
       </div>
     </div>
   )
