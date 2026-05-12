@@ -95,5 +95,6 @@ jobs:
           build-args: |
             GIT_SHA=${{ steps.meta.outputs.GIT_SHA }}
             BUILD_TIME=${{ steps.meta.outputs.BUILD_TIME }}
+            NEXT_PUBLIC_BASE_PATH=${{ github.ref_name == 'dev' && '/dev' || '' }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max

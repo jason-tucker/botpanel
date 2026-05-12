@@ -20,8 +20,13 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG GIT_SHA=dev
 ARG BUILD_TIME=unknown
+# Next.js basePath baked into the bundle. CI passes "/dev" for the dev
+# branch build so internal <Link> navigation preserves the /dev prefix
+# served by Cloudflare Tunnel. Empty/unset = no prefix (the main build).
+ARG NEXT_PUBLIC_BASE_PATH=
 ENV GIT_SHA=$GIT_SHA
 ENV BUILD_TIME=$BUILD_TIME
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN if [ -f pnpm-lock.yaml ]; then pnpm build; else npm run build; fi
 
