@@ -80,6 +80,7 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
   const topLinks: NavLink[] = [
     { href: '/', label: 'Home' },
     { href: '/me', label: 'Dashboard' },
+    { href: '/me/edit', label: 'Edit my profile' },
   ]
   const squishyGroup: NavGroup = {
     heading: 'Squishy',

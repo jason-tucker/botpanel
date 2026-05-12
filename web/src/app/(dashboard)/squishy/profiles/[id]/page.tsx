@@ -239,6 +239,10 @@ export default async function SquishyProfileDetailPage({
 
   const access = await resolveAccess(session)
   const allowed = access.botOwner || access.squishy.sudo
+  const { id } = await params
+  const isSelf = access.viewing.id === id
+  const isSudoEditor = access.botOwner || access.squishy.sudo
+  const canEdit = isSelf || isSudoEditor
 
   if (!allowed) {
     return (
@@ -258,7 +262,6 @@ export default async function SquishyProfileDetailPage({
     )
   }
 
-  const { id } = await params
   const profile = await loadProfile(id)
   if (!profile) return <NotFoundCard userId={id} />
 
@@ -296,13 +299,21 @@ export default async function SquishyProfileDetailPage({
         {/* Header card */}
         <section className="rounded-2xl border border-line bg-bg-card p-6 flex items-center gap-4">
           <InitialAvatar userId={profile.userId} displayName={profile.displayName} />
-          <div className="flex flex-col gap-1 min-w-0">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
             <div className="font-mono text-xs text-ink-dim truncate">{profile.userId}</div>
             <h1 className="text-2xl font-semibold truncate">
               {profile.displayName ?? <span className="text-ink-dim italic">(no display name)</span>}
             </h1>
             <div className="text-xs text-ink-dim">Profile</div>
           </div>
+          {canEdit && (
+            <Link
+              href={`/squishy/profiles/${id}/edit`}
+              className="shrink-0 rounded-md border border-accent/40 bg-accent/15 px-3 py-1.5 text-sm text-ink hover:bg-accent/25"
+            >
+              {isSelf && !isSudoEditor ? 'Edit my profile' : 'Edit profile'}
+            </Link>
+          )}
         </section>
 
         {/* Profile fields */}
