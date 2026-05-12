@@ -78,7 +78,10 @@ async function poll() {
   try {
     const ac = new AbortController()
     const tid = setTimeout(() => ac.abort(), TIMEOUT_MS)
-    const res = await fetch('/api/healthz', { cache: 'no-store', signal: ac.signal })
+    // Relative path — works at both `/` (prod) and `/dev/` (dev clone behind
+    // path-based tunnel route). Caddy's `uri strip_prefix /dev` handles the
+    // dev-side rewrite.
+    const res = await fetch('./api/healthz', { cache: 'no-store', signal: ac.signal })
     clearTimeout(tid)
     if (res.ok) {
       state = 'online'

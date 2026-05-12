@@ -52,10 +52,20 @@ services:
     # Auto-pull-and-restart any container labeled `com.centurylinklabs.watchtower.enable=true`
     # when its image tag (e.g. :latest, :dev) gets a new push to GHCR. Polls every 30s.
     # Only this one watchtower is needed on the VPS — it serves prod AND dev clones.
-    image: containrrr/watchtower:latest
+    #
+    # NOTE: containrrr/watchtower is unmaintained; nickfedor/watchtower is the
+    # actively-maintained fork with current Docker API support.
+    #
+    # GHCR auth: if your botpanel package is PRIVATE on GHCR (default for
+    # private repos), run once on the host to seed credentials:
+    #   docker login ghcr.io -u <gh-user>
+    # That creates ~/.docker/config.json, which we mount read-only below.
+    # If the package is PUBLIC, this mount is unnecessary — comment it out.
+    image: nickfedor/watchtower:latest
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # Mounted ONLY if the file exists. Run `docker login ghcr.io` first.
       - ${HOME}/.docker/config.json:/config.json:ro
     environment:
       WATCHTOWER_POLL_INTERVAL: 30
