@@ -413,12 +413,12 @@ export function CreateReactionRoleForm() {
       }
 
       if (!res.ok) {
-        const msg =
-          (parsed &&
-            typeof parsed === 'object' &&
-            typeof (parsed as { error?: unknown }).error === 'string' &&
-            (parsed as { error: string }).error) ||
-          `Request failed (${res.status})`
+        const parsedErr = (parsed && typeof parsed === 'object'
+          ? (parsed as { error?: unknown }).error
+          : null)
+        const msg = typeof parsedErr === 'string' && parsedErr
+          ? parsedErr
+          : `Request failed (${res.status})`
         setError(msg)
         return
       }
