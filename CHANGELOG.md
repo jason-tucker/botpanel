@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Discord resource pickers across all Squishy settings forms.** New `<RolePicker>`, `<ChannelPicker>`, `<MemberPicker>` client components fetch live cache from squishybot via three new `meta.*` RPC verbs (60s panel-side cache for roles/channels; live for member typeahead). All snowflake-text-inputs in Hubs / Games / Reaction Roles / Welcome editors replaced. Falls back to a snowflake input + error banner if the bot is unreachable, so forms still work in degraded mode.
+
 ### Fixed
 - **`web/src/app/(dashboard)/squishy/roles/RolesWriteUI.tsx` TS narrowing on `setError`.** The previous ternary collapsed to `{}` instead of `string | null` on the falsy branch — the `&&` chain's intermediate truthy `(parsed as object)` propagated. Split out `parsedErr` with a `typeof === 'string'` guard so `setError(msg)` gets a guaranteed string.
 

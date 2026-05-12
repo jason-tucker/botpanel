@@ -34,6 +34,7 @@
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { ChannelPicker } from '@/components/pickers/ChannelPicker'
 
 type Kind = 'welcome' | 'goodbye'
 
@@ -175,7 +176,7 @@ export function WelcomeEditor({
           </div>
         </ServerForm>
 
-        {/* Channel ID */}
+        {/* Channel */}
         <ServerForm
           action={`/api/squishy/settings/${encodeURIComponent(channelKey)}`}
           method="PUT"
@@ -183,22 +184,20 @@ export function WelcomeEditor({
           className="flex flex-col gap-2"
         >
           <label className="text-xs uppercase tracking-wider text-ink-dim">
-            Channel ID
+            Channel
           </label>
           <p className="text-xs text-ink-dim">
-            Discord channel snowflake. A proper channel picker arrives in
-            Wave 7d — for now paste the ID from Discord (Settings →
-            Advanced → Developer Mode, then right-click channel → Copy ID).
+            Text or announcement channel where {kind} messages get posted.
           </p>
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              name="value"
-              defaultValue={channelId}
-              placeholder="e.g. 123456789012345678"
-              pattern="\d{17,20}"
-              className="flex-1 rounded border border-line bg-bg-card2 px-2 py-1 font-mono text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
-            />
+            <div className="flex-1">
+              <ChannelPicker
+                name="value"
+                types={['text', 'announcement']}
+                defaultValue={channelId}
+                allowNone
+              />
+            </div>
             <button
               type="submit"
               className="rounded border border-line bg-bg-card2 px-3 py-1 text-xs text-ink hover:bg-bg-card"
