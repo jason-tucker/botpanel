@@ -17,14 +17,20 @@
  * `onSuccess={() => router.refresh()}` callback.
  *
  * Exports:
- *   - `<AddAutoJoinForm />`      — top-of-tab add form on the join tab.
- *   - `<RemoveAutoJoinButton />` — per-row remove.
- *   - `<AddColorRoleForm />`     — top-of-tab add form on the color tab.
- *   - `<EditColorRoleForm />`    — collapsible per-card label/sortOrder editor.
- *   - `<RemoveColorRoleButton />`— per-card remove.
+ *   - `<AddAutoJoinForm />`         — top-of-tab add form on the join tab.
+ *   - `<RemoveAutoJoinButton />`    — per-row remove.
+ *   - `<AddColorRoleForm />`        — top-of-tab add form on the color tab.
+ *   - `<EditColorRoleForm />`       — collapsible per-card label/sortOrder editor.
+ *   - `<RemoveColorRoleButton />`   — per-card remove.
+ *   - `<CreateReactionRoleForm />`  — Wave 7b builder for new reaction-role
+ *     messages. Bespoke fetch flow (rather than `<ServerForm>`) because the
+ *     payload carries a dynamic `mappings[]` array — `ServerForm`'s FormData
+ *     → flat-object collapse can't faithfully represent it. Handles its own
+ *     CSRF token fetch, error banner, and submit disabling.
+ *   - `<DeleteReactionRoleButton />`— flip-to-confirm per-card delete button.
  */
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ServerForm } from '@/lib/forms/ServerForm'
 
 const inputCls =
@@ -275,5 +281,454 @@ export function RemoveColorRoleButton({ roleId }: { roleId: string }) {
         Remove
       </button>
     </ServerForm>
+  )
+}
+
+// ─── Reaction-role builder (Wave 7b) ─────────────────────────────────
+// Bespoke fetch flow rather than <ServerForm> because the payload
+// carries a dynamic `mappings[]` array; ServerForm flattens FormData
+// to a single object per submit and can't faithfully represent it.
+// We mirror ServerForm's CSRF approach (GET /api/csrf once, attach
+// `x-csrf-token` header) and surface 4xx/5xx errors as an inline
+// banner above the form.
+
+async function fetchCsrfToken(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/csrf', {
+      method: 'GET',
+      credentials: 'same-origin',
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { token?: unknown }
+    return typeof body.token === 'string' ? body.token : null
+  } catch {
+    return null
+  }
+}
+
+type DraftMapping = { emoji: string; roleId: string }
+
+const SNOWFLAKE_RE = /^\d{15,25}$/
+const MIN_MAPPINGS = 1
+const MAX_MAPPINGS = 20
+const MAX_BODY_LEN = 2000
+const MAX_EXPIRES_MIN = 60 * 24 * 30
+
+function newDraftMapping(): DraftMapping {
+  return { emoji: '', roleId: '' }
+}
+
+export function CreateReactionRoleForm() {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [channelId, setChannelId] = useState('')
+  const [body, setBody] = useState('')
+  const [mappings, setMappings] = useState<DraftMapping[]>([newDraftMapping()])
+  const [isTemporary, setIsTemporary] = useState(false)
+  const [expiresInMinutes, setExpiresInMinutes] = useState('60')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = useCallback(() => {
+    setChannelId('')
+    setBody('')
+    setMappings([newDraftMapping()])
+    setIsTemporary(false)
+    setExpiresInMinutes('60')
+    setError(null)
+  }, [])
+
+  // Cheap client-side gate. The API revalidates everything — we just
+  // want to fail fast on obvious shape errors instead of a round-trip.
+  const validate = (): string | null => {
+    if (!SNOWFLAKE_RE.test(channelId.trim())) {
+      return 'Channel ID must be a Discord snowflake (15-25 digits).'
+    }
+    if (body.trim() === '') return 'Message body is required.'
+    if (body.length > MAX_BODY_LEN) return `Body too long (max ${MAX_BODY_LEN}).`
+    if (mappings.length < MIN_MAPPINGS || mappings.length > MAX_MAPPINGS) {
+      return `Need ${MIN_MAPPINGS}..${MAX_MAPPINGS} mappings.`
+    }
+    for (let i = 0; i < mappings.length; i++) {
+      const m = mappings[i]
+      if (!m.emoji.trim()) return `Mapping #${i + 1}: emoji is required.`
+      if (!SNOWFLAKE_RE.test(m.roleId.trim())) {
+        return `Mapping #${i + 1}: roleId must be a Discord snowflake.`
+      }
+    }
+    if (isTemporary) {
+      const n = Number(expiresInMinutes)
+      if (
+        !Number.isFinite(n) ||
+        !Number.isInteger(n) ||
+        n < 1 ||
+        n > MAX_EXPIRES_MIN
+      ) {
+        return `Expires must be an integer 1..${MAX_EXPIRES_MIN} minutes.`
+      }
+    }
+    return null
+  }
+
+  const onSubmit = async (ev: React.FormEvent<HTMLFormElement>) => {
+    ev.preventDefault()
+    if (submitting) return
+    const v = validate()
+    if (v) {
+      setError(v)
+      return
+    }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const token = await fetchCsrfToken()
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+      }
+      if (token) headers['x-csrf-token'] = token
+
+      const payload = {
+        channelId: channelId.trim(),
+        body,
+        mappings: mappings.map((m) => ({
+          emoji: m.emoji.trim(),
+          roleId: m.roleId.trim(),
+        })),
+        isTemporary,
+        ...(isTemporary
+          ? { expiresInMinutes: Number(expiresInMinutes) }
+          : {}),
+      }
+      const res = await fetch('/api/squishy/reaction-roles', {
+        method: 'POST',
+        headers,
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      })
+      let parsed: unknown = null
+      try {
+        parsed = await res.json()
+      } catch {
+        // leave parsed null
+      }
+
+      if (!res.ok) {
+        const msg =
+          (parsed &&
+            typeof parsed === 'object' &&
+            typeof (parsed as { error?: unknown }).error === 'string' &&
+            (parsed as { error: string }).error) ||
+          `Request failed (${res.status})`
+        setError(msg)
+        return
+      }
+
+      reset()
+      setOpen(false)
+      // Push to the reaction tab so the newly-created message shows up
+      // (loadReactionMessages re-runs on navigation to a dynamic page).
+      router.push('/squishy/roles?tab=reaction')
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="rounded-xl border border-line bg-bg-card p-4 flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="text-sm font-medium">
+            Create reaction-role message
+          </h3>
+          <p className="text-[11px] text-ink-dim">
+            Posts a new Discord message + watches it for reactions. Sudo only.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={btnPrimary}
+        >
+          New message
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium">Create reaction-role message</h3>
+        <span className="text-[11px] text-ink-dim">sudo · audit-logged</span>
+      </div>
+      <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+        {error && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+          >
+            {error}
+          </div>
+        )}
+        <fieldset disabled={submitting} className="contents">
+          <div className="flex flex-col gap-1">
+            <label className={labelCls} htmlFor="rxn-channelId">
+              Channel ID
+            </label>
+            <input
+              id="rxn-channelId"
+              type="text"
+              required
+              inputMode="numeric"
+              pattern="\d{15,25}"
+              placeholder="123456789012345678"
+              className={inputCls}
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
+            />
+            <p className="text-[11px] text-ink-dim">
+              Discord text-channel snowflake. Channel picker arrives in Wave 7d.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className={labelCls} htmlFor="rxn-body">
+              Body
+            </label>
+            <textarea
+              id="rxn-body"
+              required
+              maxLength={MAX_BODY_LEN}
+              rows={5}
+              className={`${inputCls} resize-y`}
+              placeholder="Click an emoji below to pick up a role."
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            <p className="text-[11px] text-ink-dim">
+              The message users see. Up to {MAX_BODY_LEN} chars; mentions are
+              stripped by the bot.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className={labelCls}>
+                Mappings ({mappings.length}/{MAX_MAPPINGS})
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (mappings.length >= MAX_MAPPINGS) return
+                  setMappings([...mappings, newDraftMapping()])
+                }}
+                disabled={mappings.length >= MAX_MAPPINGS}
+                className={btnGhost}
+              >
+                + Add mapping
+              </button>
+            </div>
+            {mappings.map((m, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[1fr_2fr_auto] gap-2 items-center"
+              >
+                <input
+                  type="text"
+                  placeholder="🟢 or <:name:id>"
+                  className={inputCls}
+                  value={m.emoji}
+                  onChange={(e) => {
+                    const next = mappings.slice()
+                    next[i] = { ...next[i], emoji: e.target.value }
+                    setMappings(next)
+                  }}
+                  aria-label={`Mapping ${i + 1} emoji`}
+                />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{15,25}"
+                  placeholder="role ID (snowflake)"
+                  className={inputCls}
+                  value={m.roleId}
+                  onChange={(e) => {
+                    const next = mappings.slice()
+                    next[i] = { ...next[i], roleId: e.target.value }
+                    setMappings(next)
+                  }}
+                  aria-label={`Mapping ${i + 1} role ID`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (mappings.length <= MIN_MAPPINGS) return
+                    setMappings(mappings.filter((_, j) => j !== i))
+                  }}
+                  disabled={mappings.length <= MIN_MAPPINGS}
+                  className={btnDanger}
+                  aria-label={`Remove mapping ${i + 1}`}
+                  title={
+                    mappings.length <= MIN_MAPPINGS
+                      ? `At least ${MIN_MAPPINGS} mapping required`
+                      : 'Remove mapping'
+                  }
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <p className="text-[11px] text-ink-dim">
+              Each row: one emoji (unicode or full <code>&lt;:name:id&gt;</code>)
+              and the role ID to toggle when a member reacts.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-md border border-line bg-bg-card2 p-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isTemporary}
+                onChange={(e) => setIsTemporary(e.target.checked)}
+              />
+              <span>Temporary (auto-expires)</span>
+            </label>
+            {isTemporary && (
+              <div className="flex flex-col gap-1">
+                <label className={labelCls} htmlFor="rxn-expires">
+                  Expires in N minutes
+                </label>
+                <input
+                  id="rxn-expires"
+                  type="number"
+                  step={1}
+                  min={1}
+                  max={MAX_EXPIRES_MIN}
+                  className={inputCls}
+                  value={expiresInMinutes}
+                  onChange={(e) => setExpiresInMinutes(e.target.value)}
+                />
+                <p className="text-[11px] text-ink-dim">
+                  1..{MAX_EXPIRES_MIN} (= 30 days). On expiry the bot deletes
+                  the message and strips granted roles.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button type="submit" className={btnPrimary}>
+              {submitting ? 'Creating…' : 'Create message'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                reset()
+                setOpen(false)
+              }}
+              className={btnGhost}
+            >
+              Cancel
+            </button>
+          </div>
+        </fieldset>
+      </form>
+    </div>
+  )
+}
+
+/**
+ * Flip-to-confirm delete button for the per-message reaction-role card.
+ * First click swaps the button into a "Confirm delete" / "Cancel" pair —
+ * a second confirm-click fires the POST. Avoids `window.confirm()` which
+ * is jarring on a dashboard and easy to muscle-memory through.
+ */
+export function DeleteReactionRoleButton({ id }: { id: string }) {
+  const router = useRouter()
+  const [armed, setArmed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const onDelete = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const token = await fetchCsrfToken()
+      const headers: Record<string, string> = {}
+      if (token) headers['x-csrf-token'] = token
+      const res = await fetch(`/api/squishy/reaction-roles/${id}/delete`, {
+        method: 'POST',
+        headers,
+        credentials: 'same-origin',
+      })
+      if (!res.ok) {
+        let msg = `Request failed (${res.status})`
+        try {
+          const parsed = await res.json()
+          if (parsed && typeof parsed === 'object') {
+            const e = (parsed as { error?: unknown }).error
+            if (typeof e === 'string') msg = e
+          }
+        } catch {
+          // leave default msg
+        }
+        setError(msg)
+        return
+      }
+      setArmed(false)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!armed) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setError(null)
+          setArmed(true)
+        }}
+        className={btnDanger}
+        title="Delete this reaction-role message"
+      >
+        Delete message
+      </button>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2">
+      {error && (
+        <span className="text-xs text-err" role="alert">
+          {error}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={submitting}
+        className={btnDanger}
+      >
+        {submitting ? 'Deleting…' : 'Confirm delete'}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setArmed(false)
+          setError(null)
+        }}
+        disabled={submitting}
+        className={btnGhost}
+      >
+        Cancel
+      </button>
+    </div>
   )
 }
