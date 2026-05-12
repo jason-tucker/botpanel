@@ -35,6 +35,12 @@ import {
 } from '@/lib/db/schema/squishy'
 import { relTime } from '@/lib/util/format'
 import { AddSudoUserForm, RevokeButton } from './SudoUserControls'
+import {
+  ApproveButton,
+  DenyButton,
+  DirectGrantForm,
+  DirectRevokeForm,
+} from './StaffApprovalControls'
 
 export const dynamic = 'force-dynamic'
 
@@ -390,6 +396,11 @@ export default async function SudoHomePage() {
               Open role requests awaiting a decision.
             </p>
           </header>
+          {/* Direct grant + revoke forms — skip the queue when sudo already
+              decided offline. Both call the panel routes that hit
+              `callBot('squishy', 'staff.grant'|'staff.revoke', …)`. */}
+          <DirectGrantForm />
+          <DirectRevokeForm />
           {approvals === null ? (
             <div className="p-4">
               <DataUnavailable what="Staff approvals" />
@@ -407,6 +418,7 @@ export default async function SudoHomePage() {
                     <th className="px-3 py-2 font-medium">Role</th>
                     <th className="px-3 py-2 font-medium">Requested data</th>
                     <th className="px-3 py-2 font-medium">Submitted</th>
+                    <th className="px-3 py-2 font-medium w-px text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -432,6 +444,12 @@ export default async function SudoHomePage() {
                           title={a.createdAt.toISOString()}
                         >
                           {relTime(a.createdAt)}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-right">
+                          <span className="inline-flex items-center gap-1">
+                            <ApproveButton id={a.id} />
+                            <DenyButton id={a.id} />
+                          </span>
                         </td>
                       </tr>
                     )
