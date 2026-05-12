@@ -10,11 +10,21 @@
  * controls — an "Add role" / "Add color role" form at the top and per-row
  * Remove / Edit-label buttons. Writes land in `auto_join_roles` and
  * `color_roles`; the bot reads both tables live on `guildMemberAdd` and
- * `/color`, so DB writes take effect with no cache step. Reaction-role
- * writes stay deferred — creating one means POSTing in Discord, which
- * needs the V2.5 command bus. See `./RolesWriteUI.tsx` for the client
- * islands and `web/src/app/api/squishy/{auto-join-roles,color-roles}/` for
- * the API surface.
+ * `/color`, so DB writes take effect with no cache step.
+ *
+ * Wave 7b: the reaction-role tab gains a sudo-gated builder ("New message"
+ * button → collapsible form with channel ID, body, dynamic mapping rows,
+ * and an optional temporary mode) plus a flip-to-confirm "Delete message"
+ * button on each per-message card. Both go through the command bus —
+ * `POST /api/squishy/reaction-roles` → `callBot('squishy', 'rxnroles.create',
+ * ...)` and `POST /api/squishy/reaction-roles/[id]/delete` →
+ * `callBot('squishy', 'rxnroles.delete', ...)` — because creating /
+ * destroying one means posting / deleting a real Discord message; the
+ * DB rows are downstream of that.
+ *
+ * See `./RolesWriteUI.tsx` for the client islands and
+ * `web/src/app/api/squishy/{auto-join-roles,color-roles,reaction-roles}/`
+ * for the API surface.
  *
  * The three surfaces:
  *
@@ -60,6 +70,8 @@ import {
 import {
   AddAutoJoinForm,
   AddColorRoleForm,
+  CreateReactionRoleForm,
+  DeleteReactionRoleButton,
   EditColorRoleForm,
   RemoveAutoJoinButton,
   RemoveColorRoleButton,
@@ -382,24 +394,31 @@ function ColorTab({
 function ReactionTab({
   rows,
   guildId,
+  canWrite,
 }: {
   rows: ReactionMessageRow[] | null
   guildId: string | null
+  canWrite: boolean
 }) {
   if (rows === null) return <UnavailableCard what="reaction-role messages" />
   if (rows.length === 0) {
     return (
-      <EmptyCard>
-        No reaction-role messages. Build one via{' '}
-        <code className="font-mono text-xs">
-          /sudo → Settings → Reaction Roles
-        </code>
-        .
-      </EmptyCard>
+      <div className="flex flex-col gap-4">
+        {canWrite && <CreateReactionRoleForm />}
+        <EmptyCard>
+          No reaction-role messages. Build one via the{' '}
+          <strong>New message</strong> button above, or via{' '}
+          <code className="font-mono text-xs">
+            /sudo → Settings → Reaction Roles
+          </code>{' '}
+          in Discord.
+        </EmptyCard>
+      </div>
     )
   }
   return (
     <div className="flex flex-col gap-4">
+      {canWrite && <CreateReactionRoleForm />}
       {rows.map((m) => {
         const channelUrl = discordChannelUrl(guildId, m.channelId)
         const messageUrl = discordMessageUrl(guildId, m.channelId, m.messageId)
@@ -487,6 +506,11 @@ function ReactionTab({
                   >
                     Open message in Discord →
                   </a>
+                )}
+                {canWrite && (
+                  <div className={messageUrl ? '' : 'ml-auto'}>
+                    <DeleteReactionRoleButton id={m.id} />
+                  </div>
                 )}
               </div>
             </div>
@@ -638,14 +662,11 @@ export default async function SquishyRolesPage({
         )}
         {tab === 'color' && <ColorTab rows={colorRows} canWrite={allowed} />}
         {tab === 'reaction' && (
-          <ReactionTab rows={reactionRows} guildId={guildId} />
-        )}
-        {tab === 'reaction' && allowed && (
-          <div className="text-[11px] text-ink-dim">
-            Reaction-role writes stay read-only here in MVP — creating a
-            reaction-role message means posting in Discord, which needs the
-            V2.5 command bus.
-          </div>
+          <ReactionTab
+            rows={reactionRows}
+            guildId={guildId}
+            canWrite={allowed}
+          />
         )}
 
         {tab === 'reaction' && !guildId && reactionRows && reactionRows.length > 0 && (

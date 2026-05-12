@@ -1,5 +1,5 @@
 /**
- * /squishy/hubs — read-only Hub Channels overview.
+ * /squishy/hubs — Hub Channels overview + sudo CRUD + lockdown control.
  *
  * Server component. Sudo-gated (Squishy sudo OR bot owner). Lists every row
  * in `hub_channels` with the per-hub defaults and a count of live spawned
@@ -8,6 +8,18 @@
  * the channel ID at spawn time). If `GUILD_ID` is configured we render an
  * "Open in Discord" deep-link next to each hub; otherwise we show plain
  * text so a missing-env panel never renders broken URLs.
+ *
+ * Wave 7b layered editing on top of the original read-only page:
+ *  - "Guild-wide lockdown" controls (lock/unlock all) at the very top.
+ *  - "Add hub" form below it for DB-only registration.
+ *  - Per-row "Lock/Unlock" toggle (per current lockdown state).
+ *  - Per-row collapsible Edit (label + position) and flip-to-confirm
+ *    Remove buttons.
+ *
+ * Every write goes through one of the `/api/squishy/hubs(/...)` routes,
+ * which audit via `writeAudit({bot:'squishy', action:'hub.*'})` and call
+ * `hub.refresh_cache` / `hub.lockdown(_all)` on the bot via the Wave 7
+ * command bus so the in-memory state catches up immediately.
  *
  * The Active VCs page at `/squishy/voice` already shows the *spawned* side
  * of this relationship live — this page is the *configuration* side, so
@@ -20,8 +32,15 @@ import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { env } from '@/lib/env'
 import { squishyDb } from '@/lib/db/squishy'
-import { hubChannels, autoChannels } from '@/lib/db/schema/squishy'
+import { hubChannels, autoChannels, botSettings } from '@/lib/db/schema/squishy'
 import { discordChannelUrl, relTime } from '@/lib/util/format'
+import {
+  AddHubForm,
+  EditHubForm,
+  HubLockToggle,
+  LockAllHubsControls,
+  RemoveHubButton,
+} from './HubsWriteUI'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +95,29 @@ async function loadHubs(): Promise<HubRow[] | null> {
   }
 }
 
+/**
+ * Read the guild-wide lockdown timestamp from `bot_settings`. The bot
+ * stores it under `voice.guild_lockdown_until` as an ISO string. We use
+ * the parsed Date (or `null` if unset / expired / unparseable) to drive
+ * the messaging on `<LockAllHubsControls>` — actual enforcement still
+ * lives on the bot.
+ */
+async function loadGuildLockdownActive(): Promise<boolean> {
+  try {
+    const rows = await squishyDb
+      .select()
+      .from(botSettings)
+      .where(eq(botSettings.key, 'voice.guild_lockdown_until'))
+    if (rows.length === 0) return false
+    const d = new Date(rows[0].value)
+    if (Number.isNaN(d.getTime())) return false
+    return d.getTime() > Date.now()
+  } catch (err) {
+    console.warn('[squishy/hubs] guild-lockdown lookup failed', err)
+    return false
+  }
+}
+
 export default async function SquishyHubsPage() {
   const session = await getSession()
   if (!session) redirect('/api/auth/login')
@@ -101,7 +143,10 @@ export default async function SquishyHubsPage() {
     )
   }
 
-  const hubs = await loadHubs()
+  const [hubs, guildLocked] = await Promise.all([
+    loadHubs(),
+    loadGuildLockdownActive(),
+  ])
   const guildId = env.GUILD_ID ?? null
 
   return (
@@ -111,8 +156,7 @@ export default async function SquishyHubsPage() {
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold">Hub Channels</h1>
             <p className="text-sm text-ink-dim">
-              Read-only view of every configured hub. Live spawned channels
-              live on{' '}
+              Configure hubs + drive lockdowns. Live spawned channels live on{' '}
               <Link href="/squishy/voice" className="text-accent underline">
                 Active VCs
               </Link>
@@ -124,6 +168,9 @@ export default async function SquishyHubsPage() {
           </Link>
         </header>
 
+        <LockAllHubsControls guildLocked={guildLocked} />
+        <AddHubForm />
+
         {hubs === null ? (
           <div className="rounded-xl border border-line bg-bg-card p-6 text-sm text-err">
             Failed to load hub channels — the SquishyBot database isn&apos;t
@@ -133,10 +180,9 @@ export default async function SquishyHubsPage() {
           </div>
         ) : hubs.length === 0 ? (
           <div className="rounded-xl border border-line bg-bg-card p-6 text-sm text-ink-dim">
-            No hub channels configured. Add via{' '}
-            <code className="font-mono text-xs">
-              /sudo → Settings → Hub Channels
-            </code>{' '}
+            No hub channels configured yet — use the &quot;Add hub channel&quot;
+            form above to register an existing Discord voice channel, or
+            run <code className="font-mono text-xs">/sudo → Settings → Hub Channels</code>{' '}
             in Discord.
           </div>
         ) : (
@@ -152,6 +198,7 @@ export default async function SquishyHubsPage() {
                     <th className="px-3 py-2 font-medium">Defaults</th>
                     <th className="px-3 py-2 font-medium">Lockdown</th>
                     <th className="px-3 py-2 font-medium">Created</th>
+                    <th className="px-3 py-2 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -231,6 +278,19 @@ export default async function SquishyHubsPage() {
                           title={h.createdAt.toISOString()}
                         >
                           {relTime(h.createdAt)}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center gap-1">
+                              <HubLockToggle hubId={h.id} locked={lockdownActive} />
+                              <RemoveHubButton hubId={h.id} />
+                            </div>
+                            <EditHubForm
+                              hubId={h.id}
+                              label={h.label}
+                              position={h.position}
+                            />
+                          </div>
                         </td>
                       </tr>
                     )

@@ -29,10 +29,17 @@ type ChannelRow = {
   name: string
   ownerUserId: string
   actingOwnerUserId: string | null
+  hostUserIds: string[]
   locked: boolean
   hidden: boolean
   createdAt: string
   members: MemberRow[]
+  /**
+   * Whether the *viewer* may operate the per-channel controls. Computed
+   * server-side so the client never decides its own gating; the API routes
+   * also re-verify before forwarding to the bot.
+   */
+  canControl: boolean
 }
 
 function nameOf(row: {
@@ -48,7 +55,7 @@ function nameOf(row: {
 }
 
 export const GET = withAuth(
-  async () => {
+  async (_req, access) => {
     try {
       // Pull both tables in parallel — small dataset (a few dozen rows at
       // most) so a join is overkill. Group in-memory after.
@@ -74,17 +81,29 @@ export const GET = withAuth(
         list.sort((a, b) => a.joinedAt.localeCompare(b.joinedAt))
       }
 
-      const rows: ChannelRow[] = channels.map((c) => ({
-        voiceChannelId: c.voiceChannelId,
-        textChannelId: c.textChannelId,
-        name: nameOf(c),
-        ownerUserId: c.ownerUserId,
-        actingOwnerUserId: c.actingOwnerUserId,
-        locked: c.isLocked,
-        hidden: c.isHidden,
-        createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : String(c.createdAt),
-        members: byChannel.get(c.voiceChannelId) ?? [],
-      }))
+      const viewerId = access.viewing.id
+      const viewerIsPriv = access.botOwner || access.squishy.sudo
+
+      const rows: ChannelRow[] = channels.map((c) => {
+        const canControl =
+          viewerIsPriv ||
+          viewerId === c.ownerUserId ||
+          c.hostUserIds.includes(viewerId) ||
+          c.actingOwnerUserId === viewerId
+        return {
+          voiceChannelId: c.voiceChannelId,
+          textChannelId: c.textChannelId,
+          name: nameOf(c),
+          ownerUserId: c.ownerUserId,
+          actingOwnerUserId: c.actingOwnerUserId,
+          hostUserIds: c.hostUserIds,
+          locked: c.isLocked,
+          hidden: c.isHidden,
+          createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : String(c.createdAt),
+          members: byChannel.get(c.voiceChannelId) ?? [],
+          canControl,
+        }
+      })
 
       return NextResponse.json({ channels: rows })
     } catch (err) {

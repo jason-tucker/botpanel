@@ -18,7 +18,8 @@
  * Username lookup is V2 (resolved via the Redis command bus to the bot).
  * For now we render the raw Discord IDs — that's enough for sudo triage.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { VoiceControls } from './VoiceControls'
 
 type Member = {
   userId: string
@@ -31,10 +32,12 @@ type Channel = {
   name: string
   ownerUserId: string
   actingOwnerUserId: string | null
+  hostUserIds: string[]
   locked: boolean
   hidden: boolean
   createdAt: string
   members: Member[]
+  canControl: boolean
 }
 
 type SnapshotResponse = {
@@ -83,10 +86,17 @@ function applyCreated(map: Map<string, Channel>, p: Record<string, unknown>): Ma
     name: asString(p.name) ?? 'Unnamed channel',
     ownerUserId: asString(p.ownerUserId) ?? '',
     actingOwnerUserId: null,
+    hostUserIds: [],
     locked: false,
     hidden: false,
     createdAt: asString(p.ts) ?? new Date().toISOString(),
     members: [],
+    // New cards arriving via SSE don't carry the viewer's control flag — only
+    // the snapshot can compute that. Pessimistic default so a viewer who got
+    // the page open before a new room appeared doesn't see fake controls;
+    // the next `router.refresh()` (or a snapshot refetch) will fill it in
+    // for real. The API routes also re-gate server-side regardless.
+    canControl: false,
   })
   return next
 }
@@ -176,31 +186,30 @@ export function VoiceLive() {
   const esRef = useRef<EventSource | null>(null)
 
   // ── Snapshot fetch ──────────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/squishy/voice/list', { credentials: 'same-origin' })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`snapshot HTTP ${res.status}`)
-        return (await res.json()) as SnapshotResponse
-      })
-      .then((data) => {
-        if (cancelled) return
-        const m = new Map<string, Channel>()
-        for (const c of data.channels) m.set(c.voiceChannelId, c)
-        setChannels(m)
-        if (data.error) setSnapshotError(data.error)
-        setLoadedSnapshot(true)
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        const msg = err instanceof Error ? err.message : String(err)
-        setSnapshotError(msg)
-        setLoadedSnapshot(true)
-      })
-    return () => {
-      cancelled = true
+  // Exposed as a callback so per-card controls can refetch after a write
+  // (rename has no bot event today, and we want the canControl flag to be
+  // re-derived when ownership changes hands).
+  const fetchSnapshot = useCallback(async () => {
+    try {
+      const res = await fetch('/api/squishy/voice/list', { credentials: 'same-origin' })
+      if (!res.ok) throw new Error(`snapshot HTTP ${res.status}`)
+      const data = (await res.json()) as SnapshotResponse
+      const m = new Map<string, Channel>()
+      for (const c of data.channels) m.set(c.voiceChannelId, c)
+      setChannels(m)
+      if (data.error) setSnapshotError(data.error)
+      else setSnapshotError(null)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setSnapshotError(msg)
+    } finally {
+      setLoadedSnapshot(true)
     }
   }, [])
+
+  useEffect(() => {
+    void fetchSnapshot()
+  }, [fetchSnapshot])
 
   // ── SSE subscription ───────────────────────────────────────────────
   useEffect(() => {
@@ -298,7 +307,12 @@ export function VoiceLive() {
 
       <div className="flex flex-col gap-3">
         {sorted.map((c) => (
-          <ChannelCard key={c.voiceChannelId} channel={c} now={now} />
+          <ChannelCard
+            key={c.voiceChannelId}
+            channel={c}
+            now={now}
+            onMutated={fetchSnapshot}
+          />
         ))}
       </div>
     </section>
@@ -327,7 +341,15 @@ function StatusBadge({ status }: { status: Status }) {
   )
 }
 
-function ChannelCard({ channel, now }: { channel: Channel; now: number }) {
+function ChannelCard({
+  channel,
+  now,
+  onMutated,
+}: {
+  channel: Channel
+  now: number
+  onMutated: () => void
+}) {
   const effectiveOwner = channel.actingOwnerUserId ?? channel.ownerUserId
   return (
     <article className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-4">
@@ -352,6 +374,18 @@ function ChannelCard({ channel, now }: { channel: Channel; now: number }) {
           <span className="rounded-full bg-bg-card2 border border-line px-2.5 py-0.5 text-xs">
             {channel.members.length} member{channel.members.length === 1 ? '' : 's'}
           </span>
+          {channel.canControl && (
+            <VoiceControls
+              voiceChannelId={channel.voiceChannelId}
+              currentName={channel.name}
+              ownerUserId={channel.ownerUserId}
+              hostUserIds={channel.hostUserIds}
+              members={channel.members}
+              locked={channel.locked}
+              hidden={channel.hidden}
+              onMutated={onMutated}
+            />
+          )}
         </div>
       </header>
 
