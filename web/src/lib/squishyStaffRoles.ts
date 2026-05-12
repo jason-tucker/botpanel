@@ -8,7 +8,7 @@
  * / `unknown-tier`) if a slug it doesn't recognize lands, so a drift bug
  * surfaces as a friendly 400 rather than a silent insert.
  *
- * On approval the bot also grants the "IT CRI Staff" base role
+ * On approval the bot also grants the "ITSRI Staff" base role
  * automatically — that role doesn't appear in this picker since the
  * requester never picks it explicitly.
  */

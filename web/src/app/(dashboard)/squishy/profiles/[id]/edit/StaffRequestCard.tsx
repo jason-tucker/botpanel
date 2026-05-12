@@ -9,7 +9,7 @@
  * Mirrors the bot's `/settings → Staff Role` flow: pick a department,
  * pick a tier (both optional, at least one required), optionally add
  * a real / preferred name, submit. Approval grants whichever roles
- * were picked plus the IT CRI Staff base role automatically.
+ * were picked plus the ITSRI Staff base role automatically.
  *
  * Pending requests are shown above the form so duplicates aren't
  * filed blindly.
@@ -76,13 +76,13 @@ export function StaffRequestCard({
         <p className="text-xs text-ink-dim leading-relaxed">
           You&apos;re sudo — picking a department / tier here{' '}
           <strong>grants the roles immediately</strong> (no review queue). The{' '}
-          <strong>IT CRI Staff</strong> base role is granted too. Picks are idempotent — already
+          <strong>ITSRI Staff</strong> base role is granted too. Picks are idempotent — already
           having a role is treated as success.
         </p>
       ) : (
         <p className="text-xs text-ink-dim leading-relaxed">
           Pick a department, a tier, or both. An admin will review in Discord and you&apos;ll get a
-          DM with the outcome. Approving also grants the <strong>IT CRI Staff</strong> base role
+          DM with the outcome. Approving also grants the <strong>ITSRI Staff</strong> base role
           automatically.
         </p>
       )}
@@ -132,8 +132,8 @@ export function StaffRequestCard({
             const failed = grants.filter((g) => !g.ok)
             const msg =
               failed.length === 0
-                ? `Granted ${what} + IT CRI Staff. Picks were instant — no review queue.`
-                : `Granted ${what} + IT CRI Staff, but ${failed.length} grant(s) failed: ${failed
+                ? `Granted ${what} + ITSRI Staff. Picks were instant — no review queue.`
+                : `Granted ${what} + ITSRI Staff, but ${failed.length} grant(s) failed: ${failed
                     .map((g) => `${g.roleKey} (${g.error ?? 'error'})`)
                     .join(', ')}.\n\nProvision the missing role keys via /sudo → Settings → Staff Roles → Provision & link and retry.`
             // eslint-disable-next-line no-alert
@@ -141,7 +141,7 @@ export function StaffRequestCard({
           } else {
             // eslint-disable-next-line no-alert
             alert(
-              `Your request for ${what} has been submitted. An admin will review it shortly. Approving will also grant the IT CRI Staff base role.`,
+              `Your request for ${what} has been submitted. An admin will review it shortly. Approving will also grant the ITSRI Staff base role.`,
             )
           }
           router.refresh()

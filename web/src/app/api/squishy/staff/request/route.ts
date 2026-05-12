@@ -108,7 +108,7 @@ export const POST = withAuth(
     // Sudo / bot-owner short-circuit: don't queue a request — grant the
     // roles immediately via the existing `staff.grant` verb. Per Wave 7b's
     // approval logic, the bundle is (picked dept) + (picked tier) + base
-    // (`staff.role.it_cri_staff`). Each grant is idempotent on the bot
+    // (`staff.role.itsri_staff`). Each grant is idempotent on the bot
     // side ("already had X" is treated as success), so a partial state
     // here recovers cleanly on retry.
     const isSudo = access.squishy.sudo || access.botOwner
@@ -116,7 +116,7 @@ export const POST = withAuth(
       const roleKeys: string[] = []
       if (deptSlug) roleKeys.push(`staff.role.${deptSlug}`)
       if (tierSlug) roleKeys.push(`staff.role.${tierSlug}`)
-      roleKeys.push('staff.role.it_cri_staff')
+      roleKeys.push('staff.role.itsri_staff')
 
       const grants: Array<{ roleKey: string; ok: boolean; error?: string; details?: unknown }> = []
       for (const roleKey of roleKeys) {
