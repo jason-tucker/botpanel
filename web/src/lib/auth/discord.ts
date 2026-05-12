@@ -12,7 +12,13 @@ export function authorizeUrl(state: string): string {
     response_type: 'code',
     scope: SCOPES.join(' '),
     state,
-    prompt: 'none',
+    // `prompt=consent` forces Discord to show the consent screen every
+    // time. Without `prompt` Discord skips consent for users who've
+    // already authorized once; we keep `consent` so first-time visitors
+    // ALWAYS see the screen rather than getting silently bounced when
+    // the prior code (`prompt=none`) would have refused without
+    // pre-existing authorization.
+    prompt: 'consent',
   })
   return `https://discord.com/api/oauth2/authorize?${params.toString()}`
 }
