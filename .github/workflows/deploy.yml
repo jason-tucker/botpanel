@@ -6,7 +6,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  verify-schemas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout botpanel
+        uses: actions/checkout@v4
+
+      - name: Checkout squishybot
+        uses: actions/checkout@v4
+        with:
+          repository: jason-tucker/squishybot
+          path: /tmp/squishybot-src
+
+      - name: Checkout otterbot
+        uses: actions/checkout@v4
+        with:
+          repository: jason-tucker/otterbot
+          path: /tmp/otterbot-src
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Verify vendored schemas are in sync with bot repos
+        env:
+          SQUISHY_REPO: /tmp/squishybot-src
+          OTTER_REPO: /tmp/otterbot-src
+        run: |
+          cd web
+          pnpm verify:schemas
+
   build:
+    needs: verify-schemas
     runs-on: ubuntu-latest
     permissions:
       contents: read
