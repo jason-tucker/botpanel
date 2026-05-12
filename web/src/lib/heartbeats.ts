@@ -70,18 +70,19 @@ function ensureSubscribed(): void {
     heartbeats.set(name, { lastSeen: Date.now(), payload })
   })
 
-  // psubscribe is async but we deliberately fire-and-forget — failure here
-  // means Redis is down, and `getSubscriber()` will retry the connection
-  // and re-emit our handlers on reconnect... except ioredis does NOT
-  // auto-resubscribe by default, so we re-subscribe on every 'connect'.
+  // ioredis does NOT auto-resubscribe across reconnects, so we re-arm on
+  // every 'ready' event. Note: 'ready' fires AFTER the connection handshake
+  // (AUTH/SELECT etc.) completes, unlike 'connect' which is too early.
+  // The offline-queue setting in redis.ts means the very first psubscribe
+  // (issued before the connection is up) is buffered and replayed cleanly.
   const resubscribe = () => {
     sub.psubscribe(PATTERN).catch((err: Error) => {
       console.warn(`heartbeats: psubscribe failed: ${err.message}`)
     })
   }
-  sub.on('connect', resubscribe)
-  // If we're already connected (e.g. hot-reload in dev), kick it now too.
-  resubscribe()
+  sub.on('ready', resubscribe)
+  // If already connected (hot-reload in dev), arm immediately.
+  if (sub.status === 'ready') resubscribe()
 }
 
 // Side-effect import: kick off the subscription at module load.

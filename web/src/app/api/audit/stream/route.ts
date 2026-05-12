@@ -163,8 +163,11 @@ export const GET = withAuth(
             console.warn(`[audit/stream] psubscribe failed: ${err.message}`)
           })
         }
-        resubscribe()
-        sub.on('connect', resubscribe)
+        // 'ready' fires after the connection handshake — 'connect' is too early
+        // with lazyConnect. Offline-queue (see lib/redis.ts) handles the case
+        // where this fires before the connection is up.
+        if (sub.status === 'ready') resubscribe()
+        sub.on('ready', resubscribe)
 
         heartbeat = setInterval(() => {
           send(`: keep-alive ${Date.now()}\n\n`)
@@ -179,7 +182,7 @@ export const GET = withAuth(
           }
           if (pmessageHandler) {
             sub.off('pmessage', pmessageHandler)
-            sub.off('connect', resubscribe)
+            sub.off('ready', resubscribe)
             pmessageHandler = null
           }
           // NOTE: we intentionally do NOT `punsubscribe` — the redis
