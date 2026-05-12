@@ -1,51 +1,62 @@
 'use client'
 /**
- * EmployeePanel — Wave 7c-B client-side hire/fire/promote/demote panel.
+ * EmployeePanel — Wave 7e per-business member roster + role editor.
  *
- * The four write surfaces all POST to `/api/otter/businesses/[slug]/employees/*`
- * which forwards to the bot's matching `employee.*` RPC verb. The bot owns
- * the Discord role mutations + the `business_owners` DB write — this
- * component is pure UI plus a `router.refresh()` on success so the
- * business detail page repaints with the new audit row.
+ * Rewrites the Wave 7c-B panel: the "Current owners" list previously
+ * came from `business_owners` only and there was no way to enumerate
+ * managers / employees (they live as pure Discord roles). The panel
+ * now hits `GET /api/otter/businesses/[slug]/roster` on mount, which
+ * forwards to the bot's `business.roster` RPC verb and returns every
+ * member holding any mapped role for this business, grouped by rank.
  *
  * Sections:
- *  - **Hire**: free-form userId + rank select. Owner rank only appears when
- *    the viewer is a business owner (or bot owner).
- *  - **Current owners**: per-owner Promote (no-op surface — bot returns
- *    `already-at-top-rank`), Demote, Fire. Fire on an owner is rejected
- *    server-side with `cannot-fire-owner` — we render that as a clear hint.
- *  - **Manage by user ID**: free-form Promote / Demote / Fire form for staff
- *    we don't have a DB row for. Managers + employees live as pure Discord
- *    roles on the bot side, so there's no roster to enumerate from the
- *    panel's DB; the slash-command-equivalent surface is a typed input.
+ *  - **Hire** — unchanged Wave 7c-B form. Owner option only when the
+ *    viewer is a business owner / bot owner.
+ *  - **Members** — owner / manager / employee groups with per-row
+ *    Promote / Demote / Fire buttons. Owners can promote a manager
+ *    up to owner; managers can't.
+ *  - **Manage by ID (advanced)** — the original free-form
+ *    promote/demote/fire input, collapsed by default. Kept as a
+ *    fallback for users who aren't on the role-derived roster yet
+ *    (e.g. a fresh hire with no roles yet, or a ban-grant target).
  *
- * Fire uses a "flip-to-confirm" pattern with a reason textarea — the action
- * stays one click for owners (where the cannot-fire-owner sentinel arrives
- * immediately) and two clicks (open → submit) for everyone else, with the
- * reason captured in the audit row.
+ * Action onSuccess: `router.refresh()` + bump the local cache-bust
+ * counter so the next roster fetch passes `?t=...` and bypasses the
+ * route's 30s module cache. Simpler than coordinating an out-of-band
+ * cache-invalidation message between the panel and the route module.
+ *
+ * Roster fetch failure: render a friendly "couldn't load roster"
+ * card with a Retry button. The DB-owner roster comes from the
+ * server render path (see `page.tsx`), so the operator still has the
+ * Manage-by-ID fallback even if the bot is unreachable.
+ *
+ * Last-owner guard: an owner row never renders Fire (or Demote when
+ * the actor is the only owner) when there's exactly one owner in the
+ * roster — the panel must never offer a way to delete the final
+ * owner. Server-side guards (cannot-fire-owner) still cover the
+ * race where the count changes between render and submit.
  */
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
 
-export type RosterEntry = {
-  /** Discord snowflake. */
-  discordUserId: string
-  /**
-   * Effective rank as known to the panel DB. Today this is only `owner`
-   * because the otter side doesn't carry a user-to-manager-or-employee
-   * table — managers + employees are pure Discord roles. The bot RPC
-   * returns the live effective rank in `data.{before,after}`.
-   */
-  rank: 'owner'
-  /** ISO string. Render with `relTime()` upstream if needed. */
-  addedAt: string | null
+type Rank = 'owner' | 'manager' | 'employee'
+
+export type RosterMember = {
+  userId: string
+  username: string
+  displayName: string
+  avatarUrl: string | null
+  rank: Rank
+}
+
+type RosterReply = {
+  members: RosterMember[]
+  counts: { owner: number; manager: number; employee: number }
 }
 
 export type EmployeePanelProps = {
   slug: string
-  /** Roster derived from `business_owners` on the server side. */
-  roster: RosterEntry[]
   /** True when the viewer can hire someone as `owner` (business owner / bot owner). */
   canActAsOwner: boolean
 }
@@ -54,27 +65,68 @@ function pillClass(extra: string): string {
   return `inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${extra}`
 }
 
-function shortId(id: string): string {
-  // Discord IDs are 17-20 digits; show the trailing 4 for at-a-glance
-  // distinguishing in a row of similarly-shaped numbers.
-  return id.length > 8 ? `…${id.slice(-4)}` : id
+function rankPillClass(rank: Rank): string {
+  if (rank === 'owner') return 'bg-rank-owner/15 text-rank-owner border-rank-owner/30'
+  if (rank === 'manager') return 'bg-rank-manager/15 text-rank-manager border-rank-manager/30'
+  return 'bg-rank-employee/15 text-rank-employee border-rank-employee/30'
 }
 
-// ───── Hire form ────────────────────────────────────────────────────────
+// ── Inline member chip ─────────────────────────────────────────────
+// UserChip is a server component, so we can't import it directly into
+// a client tree. The chip is just `<img> @displayName` though, so we
+// inline the same rendering here. Falls back to a raw-id pill when
+// the bot didn't return a displayName (e.g. user left the guild but
+// is still in `business_owners`).
+
+function MemberChip({ member }: { member: RosterMember }): React.JSX.Element {
+  const showRich =
+    member.displayName && member.displayName !== member.userId && member.avatarUrl
+  if (!showRich) {
+    return (
+      <span
+        className="inline-flex items-center font-mono text-xs text-ink whitespace-nowrap"
+        title={member.userId}
+      >
+        {member.userId}
+      </span>
+    )
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 align-middle whitespace-nowrap"
+      title={`${member.userId} · @${member.username}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={member.avatarUrl ?? undefined}
+        alt=""
+        width={24}
+        height={24}
+        className="h-6 w-6 rounded-full border border-line"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
+      <span className="text-sm text-ink">@{member.displayName}</span>
+    </span>
+  )
+}
+
+// ── Hire form ─────────────────────────────────────────────────────
 
 function HireForm({
   slug,
   canActAsOwner,
+  onSuccess,
 }: {
   slug: string
   canActAsOwner: boolean
+  onSuccess: () => void
 }): React.JSX.Element {
-  const router = useRouter()
   return (
     <ServerForm
       action={`/api/otter/businesses/${slug}/employees/hire`}
       method="POST"
-      onSuccess={() => router.refresh()}
+      onSuccess={onSuccess}
       resetOnSuccess
       className="flex flex-wrap items-end gap-3"
     >
@@ -112,7 +164,7 @@ function HireForm({
   )
 }
 
-// ───── Single-action button form (Promote / Demote / Fire by user ID) ───
+// ── Single-action button form (Promote / Demote / Fire) ────────────
 
 function ActionButton({
   slug,
@@ -122,6 +174,7 @@ function ActionButton({
   confirm,
   variant,
   reason,
+  onSuccess,
 }: {
   slug: string
   verb: 'promote' | 'demote' | 'fire'
@@ -130,20 +183,20 @@ function ActionButton({
   confirm?: string
   variant: 'neutral' | 'warn' | 'danger'
   reason?: string
+  onSuccess: () => void
 }): React.JSX.Element {
-  const router = useRouter()
   const cls =
     variant === 'danger'
       ? 'border-err/40 bg-err/15 text-err hover:bg-err/25'
       : variant === 'warn'
-      ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/20'
-      : 'border-line bg-bg-card2 text-ink hover:bg-bg-card2/70'
+        ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/20'
+        : 'border-line bg-bg-card2 text-ink hover:bg-bg-card2/70'
   return (
     <ServerForm
       action={`/api/otter/businesses/${slug}/employees/${verb}`}
       method="POST"
       confirm={confirm}
-      onSuccess={() => router.refresh()}
+      onSuccess={onSuccess}
       className="inline-flex"
     >
       <input type="hidden" name="userId" value={userId} />
@@ -158,123 +211,286 @@ function ActionButton({
   )
 }
 
-// ───── Roster row with flip-to-confirm Fire ─────────────────────────────
+// ── Per-row member entry ──────────────────────────────────────────
 
-function RosterRow({
+function MemberRow({
   slug,
-  entry,
+  member,
+  isActorOwner,
+  ownerCount,
+  onSuccess,
 }: {
   slug: string
-  entry: RosterEntry
+  member: RosterMember
+  /** True if the viewer is a business owner or bot owner. */
+  isActorOwner: boolean
+  /** Total owners in the roster — used for the last-owner guard. */
+  ownerCount: number
+  onSuccess: () => void
 }): React.JSX.Element {
-  const [confirmingFire, setConfirmingFire] = useState(false)
-  const [reason, setReason] = useState('')
-  const router = useRouter()
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-line bg-bg-card2 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={pillClass('bg-rank-owner/15 text-rank-owner border-rank-owner/30')}>
-          owner
-        </span>
-        <code className="font-mono text-xs text-ink-dim flex-1 min-w-0 truncate">
-          {entry.discordUserId}
-        </code>
-        <span className="text-xs text-ink-dim font-mono">
-          {shortId(entry.discordUserId)}
-        </span>
-        <div className="flex flex-wrap gap-1.5">
-          <ActionButton
-            slug={slug}
-            verb="promote"
-            userId={entry.discordUserId}
-            label="Promote"
-            variant="neutral"
-          />
-          <ActionButton
-            slug={slug}
-            verb="demote"
-            userId={entry.discordUserId}
-            label="Demote"
-            variant="warn"
-            confirm="Demote this owner one rung (owner → manager)?"
-          />
-          {!confirmingFire ? (
-            <button
-              type="button"
-              onClick={() => setConfirmingFire(true)}
-              className="rounded-md border border-err/40 bg-err/15 px-2.5 py-1 text-xs font-medium text-err hover:bg-err/25"
-            >
-              Fire…
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmingFire(false)
-                setReason('')
-              }}
-              className="rounded-md border border-line bg-bg-card px-2.5 py-1 text-xs text-ink-dim hover:bg-bg-card2"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-      {confirmingFire && (
-        <ServerForm
-          action={`/api/otter/businesses/${slug}/employees/fire`}
-          method="POST"
-          confirm="Fire this owner? This strips ALL business roles + clears their owner record."
-          onSuccess={() => {
-            setConfirmingFire(false)
-            setReason('')
-            router.refresh()
-          }}
-          className="flex flex-col gap-2 border-t border-line/50 pt-2"
-        >
-          <input type="hidden" name="userId" value={entry.discordUserId} />
-          <label className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-ink-dim">
-              Reason (recorded in audit)
-            </span>
-            <textarea
-              name="reason"
-              rows={2}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              maxLength={500}
-              placeholder="Optional — shown in the audit row."
-              className="rounded-md border border-line bg-bg-card2 px-3 py-1.5 text-sm"
+    <li className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-bg-card2 px-3 py-2">
+      <MemberChip member={member} />
+      <span className={pillClass(rankPillClass(member.rank))}>{member.rank}</span>
+      <code
+        className="font-mono text-xs text-ink-dim truncate"
+        title={member.userId}
+      >
+        {member.userId}
+      </code>
+      <div className="ml-auto flex flex-wrap gap-1.5">
+        {member.rank === 'employee' && (
+          <>
+            <ActionButton
+              slug={slug}
+              verb="promote"
+              userId={member.userId}
+              label="Promote to manager"
+              variant="neutral"
+              onSuccess={onSuccess}
             />
-          </label>
-          <p className="text-xs text-yellow-200">
-            Note: firing an owner via the panel is rejected by the API
-            (<code className="font-mono">cannot-fire-owner</code>) — demote
-            them first.
-          </p>
-          <button
-            type="submit"
-            className="self-start rounded-md border border-err/40 bg-err/15 px-3 py-1.5 text-sm font-medium text-err hover:bg-err/25"
-          >
-            Confirm Fire
-          </button>
-        </ServerForm>
-      )}
+            <ActionButton
+              slug={slug}
+              verb="fire"
+              userId={member.userId}
+              label="Fire"
+              variant="danger"
+              confirm={`Fire @${member.displayName} from this business? Strips all business roles.`}
+              onSuccess={onSuccess}
+            />
+          </>
+        )}
+        {member.rank === 'manager' && (
+          <>
+            {isActorOwner && (
+              <ActionButton
+                slug={slug}
+                verb="promote"
+                userId={member.userId}
+                label="Promote to owner"
+                variant="neutral"
+                confirm={`Promote @${member.displayName} to owner? They will be added to business_owners.`}
+                onSuccess={onSuccess}
+              />
+            )}
+            <ActionButton
+              slug={slug}
+              verb="demote"
+              userId={member.userId}
+              label="Demote to employee"
+              variant="warn"
+              confirm={`Demote @${member.displayName} from manager to employee?`}
+              onSuccess={onSuccess}
+            />
+            <ActionButton
+              slug={slug}
+              verb="fire"
+              userId={member.userId}
+              label="Fire"
+              variant="danger"
+              confirm={`Fire @${member.displayName} from this business? Strips all business roles.`}
+              onSuccess={onSuccess}
+            />
+          </>
+        )}
+        {member.rank === 'owner' && (
+          <>
+            {/* Last-owner guard: only render demote / fire when we're not
+                looking at the only remaining owner. Server-side
+                cannot-fire-owner also catches this on the API. */}
+            {isActorOwner && ownerCount > 1 && (
+              <>
+                <ActionButton
+                  slug={slug}
+                  verb="demote"
+                  userId={member.userId}
+                  label="Demote to manager"
+                  variant="warn"
+                  confirm={`Demote @${member.displayName} from owner to manager? Clears business_owners row.`}
+                  onSuccess={onSuccess}
+                />
+                <ActionButton
+                  slug={slug}
+                  verb="fire"
+                  userId={member.userId}
+                  label="Fire"
+                  variant="danger"
+                  confirm={`Fire @${member.displayName} from this business? They must be demoted first server-side; this will return cannot-fire-owner unless their owner record is already cleared.`}
+                  onSuccess={onSuccess}
+                />
+              </>
+            )}
+            {(!isActorOwner || ownerCount <= 1) && (
+              <span className="text-xs text-ink-dim italic">
+                {ownerCount <= 1
+                  ? 'Last owner — cannot demote / fire from panel.'
+                  : 'Only owners can demote / fire owners.'}
+              </span>
+            )}
+          </>
+        )}
+      </div>
     </li>
   )
 }
 
-// ───── Free-form Manage-by-ID block ─────────────────────────────────────
+// ── Members section ──────────────────────────────────────────────
 
-function ManageByIdBlock({ slug }: { slug: string }): React.JSX.Element {
-  const router = useRouter()
+function MembersSkeleton(): React.JSX.Element {
+  return (
+    <ul className="flex flex-col gap-2" aria-label="Loading members">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <li
+          key={i}
+          className="flex items-center gap-3 rounded-lg border border-line bg-bg-card2 px-3 py-2 animate-pulse"
+        >
+          <div className="h-6 w-6 rounded-full bg-bg-card" />
+          <div className="h-4 w-32 rounded bg-bg-card" />
+          <div className="h-4 w-16 rounded bg-bg-card" />
+          <div className="ml-auto h-6 w-24 rounded bg-bg-card" />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function GroupHeader({
+  label,
+  count,
+}: {
+  label: string
+  count: number
+}): React.JSX.Element {
+  return (
+    <div className="flex items-baseline gap-2">
+      <h3 className="text-sm font-medium">{label}</h3>
+      <span className="text-xs text-ink-dim">({count})</span>
+    </div>
+  )
+}
+
+function MembersSection({
+  slug,
+  members,
+  loading,
+  loadError,
+  isActorOwner,
+  onSuccess,
+  onRetry,
+}: {
+  slug: string
+  members: RosterMember[]
+  loading: boolean
+  loadError: string | null
+  isActorOwner: boolean
+  onSuccess: () => void
+  onRetry: () => void
+}): React.JSX.Element {
+  if (loading) return <MembersSkeleton />
+  if (loadError) {
+    return (
+      <div className="flex flex-col gap-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-3">
+        <p className="text-sm text-yellow-200">
+          Couldn&apos;t load the live roster ({loadError}). The bot may be
+          unreachable. Use Manage by ID (advanced) below as a fallback.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="self-start rounded-md border border-line bg-bg-card2 px-3 py-1 text-xs hover:bg-bg-card"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  const owners = members.filter((m) => m.rank === 'owner')
+  const managers = members.filter((m) => m.rank === 'manager')
+  const employees = members.filter((m) => m.rank === 'employee')
+
+  if (members.length === 0) {
+    return (
+      <p className="text-xs text-ink-dim italic">
+        No members hold any of this business&apos;s mapped roles. Hire someone
+        above to populate the roster.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {owners.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <GroupHeader label="Owners" count={owners.length} />
+          <ul className="flex flex-col gap-2">
+            {owners.map((m) => (
+              <MemberRow
+                key={m.userId}
+                slug={slug}
+                member={m}
+                isActorOwner={isActorOwner}
+                ownerCount={owners.length}
+                onSuccess={onSuccess}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+      {managers.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <GroupHeader label="Managers" count={managers.length} />
+          <ul className="flex flex-col gap-2">
+            {managers.map((m) => (
+              <MemberRow
+                key={m.userId}
+                slug={slug}
+                member={m}
+                isActorOwner={isActorOwner}
+                ownerCount={owners.length}
+                onSuccess={onSuccess}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+      {employees.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <GroupHeader label="Employees" count={employees.length} />
+          <ul className="flex flex-col gap-2">
+            {employees.map((m) => (
+              <MemberRow
+                key={m.userId}
+                slug={slug}
+                member={m}
+                isActorOwner={isActorOwner}
+                ownerCount={owners.length}
+                onSuccess={onSuccess}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Free-form Manage-by-ID (advanced) block ──────────────────────
+
+function ManageByIdBlock({
+  slug,
+  onSuccess,
+}: {
+  slug: string
+  onSuccess: () => void
+}): React.JSX.Element {
   const [verb, setVerb] = useState<'promote' | 'demote' | 'fire'>('promote')
   return (
     <ServerForm
       action={`/api/otter/businesses/${slug}/employees/${verb}`}
       method="POST"
       onResolveAction={() => `/api/otter/businesses/${slug}/employees/${verb}`}
-      onSuccess={() => router.refresh()}
+      onSuccess={onSuccess}
       resetOnSuccess
       className="flex flex-wrap items-end gap-3"
     >
@@ -321,8 +537,8 @@ function ManageByIdBlock({ slug }: { slug: string }): React.JSX.Element {
           verb === 'fire'
             ? 'border-err/40 bg-err/15 text-err hover:bg-err/25'
             : verb === 'demote'
-            ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/20'
-            : 'border-accent/30 bg-accent/15 text-accent hover:bg-accent/25'
+              ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/20'
+              : 'border-accent/30 bg-accent/15 text-accent hover:bg-accent/25'
         }`}
       >
         {verb === 'promote' ? 'Promote' : verb === 'demote' ? 'Demote' : 'Fire'}
@@ -331,13 +547,75 @@ function ManageByIdBlock({ slug }: { slug: string }): React.JSX.Element {
   )
 }
 
-// ───── Public ──────────────────────────────────────────────────────────
+// ── Public ────────────────────────────────────────────────────────
 
 export function EmployeePanel({
   slug,
-  roster,
   canActAsOwner,
 }: EmployeePanelProps): React.JSX.Element {
+  const router = useRouter()
+  const [members, setMembers] = useState<RosterMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Bumped on every successful write so the next roster fetch passes
+  // `?t=...` to bypass the route's 30s cache. Also forces this effect
+  // to re-run.
+  const [cacheBust, setCacheBust] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+
+    // First mount is unkeyed; subsequent fetches pass `t` so the route
+    // bypasses its module cache.
+    const url =
+      cacheBust === 0
+        ? `/api/otter/businesses/${slug}/roster`
+        : `/api/otter/businesses/${slug}/roster?t=${cacheBust}`
+
+    fetch(url, { credentials: 'same-origin' })
+      .then(async (res) => {
+        if (cancelled) return
+        if (!res.ok) {
+          let token = `${res.status}`
+          try {
+            const body = (await res.json()) as { error?: string }
+            if (body?.error) token = body.error
+          } catch {
+            // Body wasn't JSON — surface the status code.
+          }
+          setLoadError(token)
+          setMembers([])
+          return
+        }
+        const body = (await res.json()) as RosterReply
+        if (cancelled) return
+        setMembers(Array.isArray(body.members) ? body.members : [])
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setLoadError(err instanceof Error ? err.message : 'fetch-failed')
+        setMembers([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [slug, cacheBust])
+
+  const onSuccess = useCallback(() => {
+    setCacheBust(Date.now())
+    router.refresh()
+  }, [router])
+
+  const onRetry = useCallback(() => {
+    setCacheBust(Date.now())
+  }, [])
+
   return (
     <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-5">
       <div className="flex flex-col gap-1">
@@ -355,7 +633,7 @@ export function EmployeePanel({
       {/* Hire */}
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-medium">Hire</h3>
-        <HireForm slug={slug} canActAsOwner={canActAsOwner} />
+        <HireForm slug={slug} canActAsOwner={canActAsOwner} onSuccess={onSuccess} />
         {!canActAsOwner && (
           <p className="text-xs text-ink-dim italic">
             Only business owners (or bot owner) can hire someone as{' '}
@@ -364,37 +642,39 @@ export function EmployeePanel({
         )}
       </div>
 
-      {/* Roster — DB-known owners */}
-      <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium">
-          Current owners
-          <span className="text-xs text-ink-dim ml-2">
-            (from <code className="font-mono">business_owners</code>)
-          </span>
-        </h3>
-        {roster.length === 0 ? (
-          <p className="text-xs text-ink-dim italic">
-            No DB-recorded owners. Use Hire above or the bot&apos;s{' '}
-            <code className="font-mono">/portal</code> to designate one.
+      {/* Members — live roster */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h3 className="text-sm font-medium">Members</h3>
+          <p className="text-xs text-ink-dim">
+            Live roster from the bot — every member with one of this
+            business&apos;s mapped Discord roles, plus DB-recorded owners.
           </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {roster.map((entry) => (
-              <RosterRow key={entry.discordUserId} slug={slug} entry={entry} />
-            ))}
-          </ul>
-        )}
+        </div>
+        <MembersSection
+          slug={slug}
+          members={members}
+          loading={loading}
+          loadError={loadError}
+          isActorOwner={canActAsOwner}
+          onSuccess={onSuccess}
+          onRetry={onRetry}
+        />
       </div>
 
-      {/* Free-form manage by ID */}
-      <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium">Manage by user ID</h3>
-        <p className="text-xs text-ink-dim">
-          Managers + employees aren&apos;t enumerated here — they live as pure
-          Discord roles on the bot. Enter the snowflake and pick an action.
-        </p>
-        <ManageByIdBlock slug={slug} />
-      </div>
+      {/* Manage by ID — fallback */}
+      <details className="flex flex-col gap-2 rounded-lg border border-line/60 bg-bg-card2 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-ink-dim hover:text-ink">
+          Manage by ID (advanced)
+        </summary>
+        <div className="flex flex-col gap-2 pt-2">
+          <p className="text-xs text-ink-dim">
+            Off-roster operations — useful when the target isn&apos;t in the
+            live member list yet (e.g. just left, or a ban-grant target).
+          </p>
+          <ManageByIdBlock slug={slug} onSuccess={onSuccess} />
+        </div>
+      </details>
     </section>
   )
 }

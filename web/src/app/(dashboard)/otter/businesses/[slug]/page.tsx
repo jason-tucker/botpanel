@@ -42,7 +42,13 @@ import {
   type Owner as OwnerCardRow,
   type Mapping as MappingCardRow,
 } from './BusinessAdminControls'
-import { EmployeePanel, type RosterEntry } from './EmployeePanel'
+import { EmployeePanel } from './EmployeePanel'
+
+// MKE staff are managed on the external mke.euphoric.gg portal, so
+// /otter/businesses/mckenzie does NOT mount EmployeePanel — the
+// /otter/mke link-out page is the canonical surface. Both the seeded
+// `mckenzie` slug and the legacy `mke` alias are excluded.
+const MKE_SLUGS = new Set(['mckenzie', 'mke'])
 
 export const dynamic = 'force-dynamic'
 
@@ -278,22 +284,18 @@ export default async function BusinessDetailPage(
   const canEditMappings =
     access.botOwner || access.otter.businesses[slug] === 'owner'
 
-  // Wave 7c-B — employee hire/fire/promote/demote panel. Only rendered for
-  // manager+ on this business (or bot owner). Owner roster comes straight
-  // from `ownersR` so we don't re-query.
+  // Wave 7c-B / 7e — employee hire/fire/promote/demote panel. Only
+  // rendered for manager+ on this business (or bot owner), and never for
+  // MKE — its staff are managed on the external mke.euphoric.gg portal.
+  // The Members list inside the panel is now a live RPC fetch keyed on
+  // slug, so we no longer need to pass a server-rendered owner roster.
   const viewerOwnsBusiness =
     access.botOwner || access.otter.businesses[slug] === 'owner'
   const viewerCanManageEmployees =
-    access.botOwner ||
-    access.otter.businesses[slug] === 'owner' ||
-    access.otter.businesses[slug] === 'manager'
-  const employeeRoster: RosterEntry[] = ownersR.ok
-    ? ownersR.data.map((o) => ({
-        discordUserId: o.discordUserId,
-        rank: 'owner' as const,
-        addedAt: o.addedAt ? o.addedAt.toISOString() : null,
-      }))
-    : []
+    !MKE_SLUGS.has(slug) &&
+    (access.botOwner ||
+      access.otter.businesses[slug] === 'owner' ||
+      access.otter.businesses[slug] === 'manager')
 
   return (
     <main className="min-h-dvh p-6 sm:p-10">
@@ -348,13 +350,9 @@ export default async function BusinessDetailPage(
           </section>
         )}
 
-        {/* Employee management — Wave 7c-B */}
+        {/* Employee management — Wave 7c-B / 7e (live roster) */}
         {viewerCanManageEmployees && (
-          <EmployeePanel
-            slug={slug}
-            roster={employeeRoster}
-            canActAsOwner={viewerOwnsBusiness}
-          />
+          <EmployeePanel slug={slug} canActAsOwner={viewerOwnsBusiness} />
         )}
 
         {/* Role mappings */}
