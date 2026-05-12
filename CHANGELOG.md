@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`/api/healthz` now aggregates live bot heartbeats from Redis pub/sub.** A lazy-singleton ioredis subscriber (`web/src/lib/redis.ts`) psubscribes to `bot.*.bot.heartbeat` and a module-level Map in `web/src/lib/heartbeats.ts` tracks the latest `{ version, uptime, ts, guildCount? }` per bot. The healthz response now includes a `bots` map keyed by bot name with `lastSeen` (ISO), `uptime`, `version`, optional `guildCount`, plus `online: true` and `lastBeatSec` for the landing-page renderer. Entries older than 3× the 60s publish tick (180s) are omitted so the landing page falls back to "no heartbeat yet" instead of showing stale uptime. Redis being unreachable is non-fatal — the Map stays empty and the route still returns 200 with `bots: {}`.
+
 ### Changed
 - **`cloudflared` moved out of the compose stack to a standalone `docker run` container.** Previously the cloudflared service was managed by compose, which meant `docker compose up -d` on the botpanel stack could (and did, today) recreate the container and wipe its `TUNNEL_TOKEN`. The new pattern runs cloudflared as a long-lived standalone container with `--network host` (so Cloudflare ingress rules pointing at `localhost:6080`/`6081` reach the prod/dev Caddy containers directly) and reads the token from `/home/botuser/cloudflared/.env` (chmod 600). One cloudflared fronts both clones, survives any compose teardown, and gets auto-updated by the shared watchtower via the `com.centurylinklabs.watchtower.enable=true` label. The `docker run` command lives in a comment block in `docker-compose.yml` for future setups. CHANGELOG / `.env.example` / `CLAUDE.md` updated accordingly; `CF_TUNNEL_TOKEN` removed from `.env.example` since the stack no longer reads it.
 
