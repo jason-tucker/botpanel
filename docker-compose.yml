@@ -19,7 +19,13 @@ services:
     expose:
       - "3000"
     networks:
-      - botpanel-net
+      botpanel-net:
+        # Per-clone alias so prod+dev clones can both put a "next" service on
+        # the shared botpanel-net without docker DNS round-robining between
+        # them. Defaults to "next-prod" for the main stack; dev .env overrides
+        # to "next-dev" so its Caddy can target the right container.
+        aliases:
+          - ${NEXT_ALIAS:-next-prod}
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     logging:
@@ -40,6 +46,11 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${PORT:-6080}
+      # Tells the Caddyfile which `next` to reverse-proxy. Defaults to
+      # next-prod for the main stack; dev .env overrides to next-dev.
+      # Without this, both clones' next services share the bare alias
+      # `next` on botpanel-net and docker DNS round-robins between them.
+      NEXT_HOST: ${NEXT_HOST:-next-prod}
     # Bind to LOOPBACK ONLY on the host so cloudflared running on the host
     # (or anywhere else on the VPS) can reach us at localhost:${PORT}. This
     # is NOT a public exposure — 127.0.0.1 is not reachable from the internet.

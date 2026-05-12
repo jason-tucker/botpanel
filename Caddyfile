@@ -31,9 +31,14 @@
     }
   }
 
-  reverse_proxy next:3000 {
+  reverse_proxy {$NEXT_HOST:next-prod}:3000 {
     # If Next.js is not yet up (Phase 0 → MVP transition), Caddy
     # automatically falls back to the error handler above.
+    # NEXT_HOST defaults to `next-prod` so this Caddyfile is reusable in
+    # the dev clone — its .env sets NEXT_HOST=next-dev to target the
+    # per-clone botpanel-net alias added in docker-compose.yml. Without
+    # the alias split, both clones' next services would compete for the
+    # bare `next` DNS name and docker would round-robin between them.
     fail_duration 5s
     max_fails 2
     lb_try_duration 2s
