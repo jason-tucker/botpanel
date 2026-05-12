@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Docs
+- **CLAUDE.md gains rule 6 — "Dev-first branching".** Documents the canonical workflow: feature branches target `dev`, verify on `bots.tucker.host/dev/`, then a promotion PR fast-forwards `main` to dev's HEAD. Hot fixes get a documented carve-out (`--base main` allowed when prod is broken + immediate main→dev sync PR required). Bot repos stay direct-to-main since they have no dev clone. Deployment section updated to reflect the two-tag / two-clone / one-watchtower layout.
+
 ### Fixed
 - **OAuth callback now redirects to `PUBLIC_BASE_URL`, not the internal Next listen address.** Caddy reverse-proxies to `next-prod:3000`, so `req.url` inside the callback handler sees `http://0.0.0.0:3000` as its origin — and `new URL('/', url.origin)` was sending users to that internal address after a successful Discord auth, breaking sign-in end-to-end with "this webpage may have moved permanently". Replaced all four callback redirects (success + 3 error paths) with a `homeUrl(qs)` helper that derives the canonical URL from `env.PUBLIC_BASE_URL` (the same value already used to build the OAuth redirect_uri).
 - **Per-clone DNS alias for the `next` service** so prod and dev Caddies don't round-robin between each other's Next.js containers. Both clones declared `next` as a service name on the shared `botpanel-net`, which made docker's DNS resolver alternate between them — so `bots.tucker.host/api/auth/login` was sometimes generating a `/dev` redirect_uri (and vice-versa) because the request reached the wrong Next.js process. New compose `networks.botpanel-net.aliases: [${NEXT_ALIAS:-next-prod}]` adds a unique alias per clone (`next-prod` for main, `next-dev` for dev), and the Caddyfile now reads `${NEXT_HOST:-next-prod}` so each clone's Caddy targets the right container.
