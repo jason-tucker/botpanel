@@ -32,6 +32,8 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { ChannelPicker } from '@/components/pickers/ChannelPicker'
+import { RolePicker } from '@/components/pickers/RolePicker'
 
 const inputCls =
   'w-full rounded-md border border-line bg-bg-card2 px-2 py-1.5 text-sm placeholder:text-ink-dim/50 focus:outline-none focus:ring-1 focus:ring-accent'
@@ -476,21 +478,18 @@ export function CreateReactionRoleForm() {
         <fieldset disabled={submitting} className="contents">
           <div className="flex flex-col gap-1">
             <label className={labelCls} htmlFor="rxn-channelId">
-              Channel ID
+              Channel
             </label>
-            <input
+            <ChannelPicker
               id="rxn-channelId"
-              type="text"
-              required
-              inputMode="numeric"
-              pattern="\d{15,25}"
-              placeholder="123456789012345678"
-              className={inputCls}
+              name="rxn-channelId"
+              types={['text', 'announcement']}
               value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
+              onChange={setChannelId}
+              required
             />
             <p className="text-[11px] text-ink-dim">
-              Discord text-channel snowflake. Channel picker arrives in Wave 7d.
+              Channel the reaction-role message will be posted in.
             </p>
           </div>
 
@@ -548,19 +547,14 @@ export function CreateReactionRoleForm() {
                   }}
                   aria-label={`Mapping ${i + 1} emoji`}
                 />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="\d{15,25}"
-                  placeholder="role ID (snowflake)"
-                  className={inputCls}
+                <RolePicker
+                  name={`rxn-mapping-role-${i}`}
                   value={m.roleId}
-                  onChange={(e) => {
+                  onChange={(v) => {
                     const next = mappings.slice()
-                    next[i] = { ...next[i], roleId: e.target.value }
+                    next[i] = { ...next[i], roleId: v }
                     setMappings(next)
                   }}
-                  aria-label={`Mapping ${i + 1} role ID`}
                 />
                 <button
                   type="button"
@@ -583,7 +577,7 @@ export function CreateReactionRoleForm() {
             ))}
             <p className="text-[11px] text-ink-dim">
               Each row: one emoji (unicode or full <code>&lt;:name:id&gt;</code>)
-              and the role ID to toggle when a member reacts.
+              and the role to toggle when a member reacts.
             </p>
           </div>
 
