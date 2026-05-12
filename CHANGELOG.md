@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`/squishy/archives` — read-only Archived Channels overview (sudo-gated).** New server-rendered page at `web/src/app/(dashboard)/squishy/archives/page.tsx` lists every row in `archived_channels` ordered by `archived_at desc` (capped at 100) with original name, channel ID (Discord deep-link when `GUILD_ID` is set), original parent category, archiver as `<@id>` mention, and relative archive time. URL-driven substring search (`?q=…`) via Drizzle `ilike` on `original_name`. DB-unavailable degrades to an inline error card; filtered-empty and "nothing archived" states distinct. Sidebar Squishy group gains "Archives" link between Roles and Active Voice. Game Nights companion page **deferred** — the vendored Drizzle schemas don't ship a `game_nights` table yet, so we'd be fabricating one against a missing model; will land when the schema does.
+
 ### Fixed
 - **Removed duplicate `/audit/*` and `/squishy/voice/*` page files** that were left in `web/src/app/` after #58 moved them into the `(dashboard)/` route group. Next.js refused to build with "You cannot have two parallel pages that resolve to the same path." The rename was recorded in git but the old files persisted on disk and got reintroduced via rebase replays of Wave 3/4 branches that branched from a pre-rename base. Deleting the orphaned originals; the canonical pages live at `web/src/app/(dashboard)/audit/{page,AuditLive}.tsx` and `web/src/app/(dashboard)/squishy/voice/{page,VoiceLive}.tsx`.
 
