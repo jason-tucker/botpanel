@@ -97,9 +97,16 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/otter/oc-stock', label: 'OC Stock' },
     ],
   }
+  // "Admin Home" (/sudo) is rendered only for the bot owner — the page
+  // itself gates on `access.botOwner` and the cross-cutting view is
+  // owner-only in MVP. Sudo-without-owner still sees the rest of the
+  // group (audit), they just don't see the Admin Home link.
   const sudoGroup: NavGroup = {
     heading: 'Sudo-only',
-    links: [{ href: '/audit', label: 'Audit Log' }],
+    links: [
+      ...(access.botOwner ? [{ href: '/sudo', label: 'Admin Home' }] : []),
+      { href: '/audit', label: 'Audit Log' },
+    ],
   }
 
   const isActive = (href: string) => {
