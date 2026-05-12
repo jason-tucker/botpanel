@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.2",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync:schemas": "bash ../scripts/sync-schema.sh",
+    "verify:schemas": "bash ../scripts/sync-schema.sh && git diff --exit-code -- src/lib/db/schema || (echo '❌ Schemas drifted — re-run pnpm sync:schemas and commit' && exit 1)"
   },
   "dependencies": {
     "drizzle-orm": "^0.36.0",
@@ -28,5 +31,10 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.6.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp"
+    ]
   }
 }
