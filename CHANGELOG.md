@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **TS narrowing in 4 employee write routes.** The `!reply.ok` audit-write branches in `/api/otter/businesses/[slug]/employees/{hire,fire,promote,demote}/route.ts` referenced `reply.data?.before` / `reply.data?.after`, but on the failure variant `BotRpcResult` has no `data` property. Replaced with `before: null, after: null` (the values are meaningless when the bot call failed). Success-branch refs unchanged — `callBot<{before, after}>` provides the right type there.
 - **Merge-conflict hot fix in `/otter/businesses/[slug]/audit/page.tsx`.** The sequential merge of Wave 7d-C (#109, shared `<AuditTable>` refactor) and Wave 7d-B (#114, `<UserChip>` integration) on the same page left both render trees concatenated, breaking JSX. Resolved by dropping the ad-hoc `<ul>`/`<nav>` block — the new `<AuditTable>` already handles row chips internally per the 7d-C design. Removed now-unused `UserChip` / `relTime` / `resolveUsernames` imports and the `userMap` pre-resolution from this page (the in-row `resolved` Map still pre-fills display names from `audit_logs.actor_name`).
 
 ### Added
