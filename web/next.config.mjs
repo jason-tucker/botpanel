@@ -8,6 +8,13 @@ const nextConfig = {
   // which our Dockerfile copies into the runner stage. Slim image, no node_modules.
   output: 'standalone',
 
+  // basePath is set per-image at build time so internal `<Link>` navigation
+  // preserves the /dev prefix on the dev clone. CI passes
+  // NEXT_PUBLIC_BASE_PATH=/dev for the dev branch build, no value for main.
+  // Read in next.config so the value is baked into the bundle (basePath is
+  // a build-time concern in Next.js — can't be flipped at runtime).
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || undefined,
+
   // Tighten the response headers. Cloudflare adds its own on top; this defends
   // even if traffic ever reaches the origin directly.
   async headers() {

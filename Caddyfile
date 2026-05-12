@@ -14,10 +14,10 @@
 :{$PORT:6080} {
   encode gzip zstd
 
-  # Path-based dev routing: bots.tucker.host/dev/* gets the prefix stripped
-  # so the same Caddy serves both prod (at root) and the dev clone (at /dev/).
-  # No-op when no /dev prefix is present.
-  uri strip_prefix /dev
+  # NOTE: No more `uri strip_prefix /dev` here. Next.js now handles the
+  # `/dev` prefix natively via `basePath` (baked into the dev image at
+  # build time via NEXT_PUBLIC_BASE_PATH=/dev), so internal <Link> nav
+  # preserves the prefix and Caddy just forwards every path verbatim.
 
   # Reverse-proxy to Next.js when it's up. If Next is down or returning 5xx,
   # handle_errors below falls back to landing/502.html so the page is ALWAYS
