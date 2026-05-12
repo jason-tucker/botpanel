@@ -38,6 +38,7 @@ import {
 import {
   OwnersCard,
   RoleMappingsCard,
+  SyncRolesCard,
   type Owner as OwnerCardRow,
   type Mapping as MappingCardRow,
 } from './BusinessAdminControls'
@@ -371,6 +372,12 @@ export default async function BusinessDetailPage(
             <Unavailable what="Role mapping" />
           </section>
         )}
+
+        {/* Sync roles to Discord — owner-only */}
+        <SyncRolesCard
+          slug={slug}
+          isOwner={access.otter.businesses[slug] === 'owner'}
+        />
 
         {/* Recent standings */}
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
