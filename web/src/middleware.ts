@@ -21,5 +21,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/squishy/:path*', '/otter/:path*', '/sudo/:path*', '/me'],
+  matcher: ['/squishy/:path*', '/otter/:path*', '/sudo/:path*', '/me', '/audit/:path*'],
 }
