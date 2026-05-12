@@ -34,8 +34,13 @@ import {
   standingColor,
   providerColor,
   relTime,
-  compareRank,
 } from '@/lib/util/otterFormat'
+import {
+  OwnersCard,
+  RoleMappingsCard,
+  type Owner as OwnerCardRow,
+  type Mapping as MappingCardRow,
+} from './BusinessAdminControls'
 
 export const dynamic = 'force-dynamic'
 
@@ -266,15 +271,10 @@ export default async function BusinessDetailPage(
       }),
   ])
 
-  // Pre-sort mappings: owner → manager → employee, then by role name.
-  let sortedMappings: Mapping[] = []
-  if (mappingsR.ok) {
-    sortedMappings = [...mappingsR.data].sort((a, b) => {
-      const r = compareRank(a.rank, b.rank)
-      if (r !== 0) return r
-      return (a.roleName ?? '').localeCompare(b.roleName ?? '')
-    })
-  }
+  // Sorting is delegated to <RoleMappingsCard> so the read-only and the
+  // edit-enabled paths share the exact same ordering.
+  const canEditMappings =
+    access.botOwner || access.otter.businesses[slug] === 'owner'
 
   return (
     <main className="min-h-dvh p-6 sm:p-10">
@@ -314,91 +314,36 @@ export default async function BusinessDetailPage(
         </header>
 
         {/* Owners */}
-        <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
-          <h2 className="text-xs uppercase tracking-wider text-ink-dim">
-            Owners {ownersR.ok && <span className="text-ink">({ownersR.data.length})</span>}
-          </h2>
-          {!ownersR.ok ? (
+        {ownersR.ok ? (
+          <OwnersCard
+            slug={slug}
+            owners={ownersR.data as OwnerCardRow[]}
+            isBotOwner={access.botOwner}
+          />
+        ) : (
+          <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
+            <h2 className="text-xs uppercase tracking-wider text-ink-dim">
+              Owners
+            </h2>
             <Unavailable what="Owner" />
-          ) : ownersR.data.length === 0 ? (
-            <p className="text-ink-dim text-sm">No owners recorded.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {ownersR.data.map((o) => (
-                <li
-                  key={o.id}
-                  className="flex flex-wrap items-center gap-3 justify-between rounded-lg border border-line bg-bg-card2 px-3 py-2"
-                >
-                  <code className="font-mono text-sm">{o.discordUserId}</code>
-                  <span className="text-xs text-ink-dim font-mono">
-                    {`<@${o.discordUserId}>`}
-                  </span>
-                  <span className="text-xs text-ink-dim">
-                    added {relTime(o.addedAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          </section>
+        )}
 
         {/* Role mappings */}
-        <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
-          <h2 className="text-xs uppercase tracking-wider text-ink-dim">
-            Role mappings {mappingsR.ok && <span className="text-ink">({mappingsR.data.length})</span>}
-          </h2>
-          {!mappingsR.ok ? (
+        {mappingsR.ok ? (
+          <RoleMappingsCard
+            slug={slug}
+            mappings={mappingsR.data as MappingCardRow[]}
+            canEdit={canEditMappings}
+          />
+        ) : (
+          <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">
+            <h2 className="text-xs uppercase tracking-wider text-ink-dim">
+              Role mappings
+            </h2>
             <Unavailable what="Role mapping" />
-          ) : mappingsR.data.length === 0 ? (
-            <p className="text-ink-dim text-sm">No Discord roles mapped to ranks yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs uppercase text-ink-dim">
-                  <tr>
-                    <th className="text-left font-normal py-2 pr-3">Role</th>
-                    <th className="text-left font-normal py-2 pr-3">Rank</th>
-                    <th className="text-left font-normal py-2 pr-3">Min to assign</th>
-                    <th className="text-left font-normal py-2 pr-3">Auto-grant</th>
-                    <th className="text-left font-normal py-2 pr-3">Base</th>
-                    <th className="text-left font-normal py-2 pr-3">Role ID</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedMappings.map((m) => (
-                    <tr key={m.id} className="border-t border-line align-top">
-                      <td className="py-2 pr-3">
-                        <div className="font-medium">{m.roleName ?? '—'}</div>
-                        {m.label && (
-                          <div className="text-xs text-ink-dim">{m.label}</div>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <span className={pillClass(rankColor(m.rank))}>
-                          {rankLabel(m.rank)}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3">
-                        <span className={pillClass(rankColor(m.minRankToAssign))}>
-                          {rankLabel(m.minRankToAssign)}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3 text-ink-dim">
-                        {m.autoGrantEmployee ? 'yes' : '—'}
-                      </td>
-                      <td className="py-2 pr-3 text-ink-dim">
-                        {m.isBase ? 'yes' : '—'}
-                      </td>
-                      <td className="py-2 pr-3 font-mono text-xs text-ink-dim">
-                        {m.roleId}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+          </section>
+        )}
 
         {/* Recent standings */}
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex flex-col gap-3">

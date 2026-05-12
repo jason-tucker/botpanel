@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`user_profiles` editor — sudo full + self-service `/me/edit`.** `PATCH /api/squishy/profiles/[id]` is JSON-only, gated in-handler: sudo + bot owner get the full schema (incl. staff fields), self-service (id === viewing.id, no sudo) gets a restricted schema (names + birthday only). Upsert via Drizzle `ON CONFLICT (guild_id, user_id) DO UPDATE` so first-edit lazy-creates the row. Audits success + failure with `before`/`after`. New `/squishy/profiles/[id]/edit` page + `/me/edit` redirect. Detail page gains "Edit profile" button; sidebar gains "Edit my profile" link.
+- **`business_owners` + `business_role_mappings` CRUD on `/otter/businesses/[slug]` (DB only; Discord side ships with Wave 7).** `POST/DELETE /owners` (bot-owner-only) + `POST/PATCH/DELETE /role-mappings` (bot-owner OR business-owner). Detail page gains `<OwnersCard>` + `<RoleMappingsCard>` with edit forms; both edit-enabled cards carry a yellow warning banner — "DB-only change. Discord role assignment / removal arrives with the Wave 7 command bus — this surface only writes the mapping table."
+
 ### Fixed
 - **Dev clone preserves `/dev` prefix on internal `<Link>` navigation.** Clicking any link on `bots.tucker.host/dev/…` previously bounced you to the prod URL (no prefix) because Next.js didn't know it was being served from a subpath — Caddy was stripping `/dev` at the edge. Switched to Next.js's native `basePath`: `next.config.mjs` reads `NEXT_PUBLIC_BASE_PATH` at build time, the Dockerfile threads it through via `ARG`, and CI passes `=/dev` for the dev branch build (`github.ref_name == 'dev' && '/dev' || ''`) and empty for main. Caddy stops stripping the prefix since Next.js now serves `/dev/…` paths directly and renders all internal hrefs with the prefix automatically. Prod is unaffected.
 
