@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Removed duplicate `/audit/*` and `/squishy/voice/*` page files** that were left in `web/src/app/` after #58 moved them into the `(dashboard)/` route group. Next.js refused to build with "You cannot have two parallel pages that resolve to the same path." The rename was recorded in git but the old files persisted on disk and got reintroduced via rebase replays of Wave 3/4 branches that branched from a pre-rename base. Deleting the orphaned originals; the canonical pages live at `web/src/app/(dashboard)/audit/{page,AuditLive}.tsx` and `web/src/app/(dashboard)/squishy/voice/{page,VoiceLive}.tsx`.
+
 ### Docs
 - **CLAUDE.md gains rule 6 — "Dev-first branching".** Documents the canonical workflow: feature branches target `dev`, verify on `bots.tucker.host/dev/`, then a promotion PR fast-forwards `main` to dev's HEAD. Hot fixes get a documented carve-out (`--base main` allowed when prod is broken + immediate main→dev sync PR required). Bot repos stay direct-to-main since they have no dev clone. Deployment section updated to reflect the two-tag / two-clone / one-watchtower layout.
 
