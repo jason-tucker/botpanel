@@ -25,6 +25,7 @@ import { otterDb } from '@/lib/db/otter'
 import { businesses } from '@/lib/db/schema/otter/businesses'
 import { standings } from '@/lib/db/schema/otter/standings'
 import { standingColor, relTime } from '@/lib/util/otterFormat'
+import { RecordStandingForm } from './RecordStandingForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -197,6 +198,9 @@ export default async function BusinessStandingsPage(
     ? Math.max(1, Math.ceil(result.total / PAGE_SIZE))
     : 1
 
+  // Any rank in the business (or bot owner) can record a standing.
+  const canRecord = Boolean(explicitRank) || access.botOwner
+
   return (
     <main className="min-h-dvh p-6 sm:p-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
@@ -221,6 +225,18 @@ export default async function BusinessStandingsPage(
             )}
           </div>
         </header>
+
+        {canRecord && (
+          <section className="rounded-xl border border-line bg-bg-card p-4 flex flex-col gap-3">
+            <header className="flex items-baseline justify-between gap-3 flex-wrap">
+              <h2 className="text-base font-semibold">Record standing</h2>
+              <p className="text-xs text-ink-dim">
+                One row per character — re-submitting updates the existing entry.
+              </p>
+            </header>
+            <RecordStandingForm slug={slug} />
+          </section>
+        )}
 
         <form
           action={`/otter/businesses/${slug}/standings`}
