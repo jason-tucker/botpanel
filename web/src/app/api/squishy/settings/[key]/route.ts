@@ -75,11 +75,11 @@ export const PUT = withAuth(
         action: 'setting.changed',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: keyErr,
+        success: false,
+        errorMessage: keyErr,
       }).catch(() => {})
       return NextResponse.json({ error: keyErr }, { status: 400 })
     }
@@ -93,11 +93,11 @@ export const PUT = withAuth(
         action: 'setting.changed',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: 'invalid-json',
+        success: false,
+        errorMessage: 'invalid-json',
       }).catch(() => {})
       return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 })
     }
@@ -109,11 +109,11 @@ export const PUT = withAuth(
         action: 'setting.changed',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: 'value must be a string',
+        success: false,
+        errorMessage: 'value must be a string',
       }).catch(() => {})
       return NextResponse.json({ error: 'value must be a string' }, { status: 400 })
     }
@@ -123,11 +123,11 @@ export const PUT = withAuth(
         action: 'setting.changed',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: 'value must be non-empty',
+        success: false,
+        errorMessage: 'value must be non-empty',
       }).catch(() => {})
       return NextResponse.json({ error: 'value must be non-empty' }, { status: 400 })
     }
@@ -137,14 +137,14 @@ export const PUT = withAuth(
         action: 'setting.changed',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: `value must be <= ${VALUE_MAX} chars`,
+        success: false,
+        errorMessage: `value must be <= ${VALUE_MAX} chars`,
       }).catch(() => {})
       return NextResponse.json(
-        { error: `value must be <= ${VALUE_MAX} chars` },
+        { errorMessage: `value must be <= ${VALUE_MAX} chars` },
         { status: 400 },
       )
     }
@@ -176,11 +176,11 @@ export const PUT = withAuth(
         action: 'setting.changed',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before,
         after: value,
-        ok: false,
-        error: msg,
+        success: false,
+        errorMessage: msg,
       }).catch(() => {})
       return NextResponse.json({ error: 'db-write-failed' }, { status: 503 })
     }
@@ -190,15 +190,15 @@ export const PUT = withAuth(
       action: 'setting.changed',
       targetType: 'bot_settings',
       targetId: key,
-      actorDiscordId: actor,
+      actor: access.actor, viewing: access.viewing,
       before,
       after: value,
-      ok: true,
+      success: true,
     }).catch((err) => {
       console.warn('[squishy/settings PUT] audit write failed (write succeeded)', err)
     })
 
-    return NextResponse.json({ ok: true, key, value })
+    return NextResponse.json({ success: true, key, value })
   },
   {
     require: 'sudo',
@@ -219,11 +219,11 @@ export const DELETE = withAuth(
         action: 'setting.cleared',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: false,
-        error: keyErr,
+        success: false,
+        errorMessage: keyErr,
       }).catch(() => {})
       return NextResponse.json({ error: keyErr }, { status: 400 })
     }
@@ -237,13 +237,13 @@ export const DELETE = withAuth(
         action: 'setting.cleared',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before: null,
         after: null,
-        ok: true,
-        error: 'not-found',
+        success: true,
+        errorMessage: 'not-found',
       }).catch(() => {})
-      return NextResponse.json({ ok: true, key, cleared: false })
+      return NextResponse.json({ success: true, key, cleared: false })
     }
 
     try {
@@ -258,11 +258,11 @@ export const DELETE = withAuth(
         action: 'setting.cleared',
         targetType: 'bot_settings',
         targetId: key,
-        actorDiscordId: actor,
+        actor: access.actor, viewing: access.viewing,
         before,
         after: null,
-        ok: false,
-        error: msg,
+        success: false,
+        errorMessage: msg,
       }).catch(() => {})
       return NextResponse.json({ error: 'db-write-failed' }, { status: 503 })
     }
@@ -272,15 +272,15 @@ export const DELETE = withAuth(
       action: 'setting.cleared',
       targetType: 'bot_settings',
       targetId: key,
-      actorDiscordId: actor,
+      actor: access.actor, viewing: access.viewing,
       before,
       after: null,
-      ok: true,
+      success: true,
     }).catch((err) => {
       console.warn('[squishy/settings DELETE] audit write failed (delete succeeded)', err)
     })
 
-    return NextResponse.json({ ok: true, key, cleared: true })
+    return NextResponse.json({ success: true, key, cleared: true })
   },
   {
     require: 'sudo',
