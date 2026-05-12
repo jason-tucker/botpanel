@@ -33,7 +33,7 @@ import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { env } from '@/lib/env'
-import { labelForSlug } from '@/lib/squishyStaffRoles'
+import { labelForDepartment, labelForTier } from '@/lib/squishyStaffRoles'
 import { ProfileEditor, type EditableProfile } from './ProfileEditor'
 import { StaffRequestCard, type PendingStaffRequest } from './StaffRequestCard'
 
@@ -62,18 +62,43 @@ async function loadPendingStaffRequests(
       .orderBy(desc(squishySchema.staffApprovals.createdAt))
     return rows.map((r) => {
       const d = (r.requestedData ?? {}) as {
+        // New shape
+        department_key?: string | null
+        department_label?: string | null
+        tier_key?: string | null
+        tier_label?: string | null
+        // Legacy shape (single-role rows pre-redesign)
         role_key?: string
         role_label?: string
         real_name?: string | null
-        reason?: string | null
       }
-      const roleSlug = d.role_key?.replace(/^staff\.role\./, '') ?? ''
+
+      let departmentLabel: string | null = null
+      let tierLabel: string | null = null
+
+      if (d.department_key) {
+        const slug = d.department_key.replace(/^staff\.role\./, '')
+        departmentLabel = d.department_label ?? labelForDepartment(slug) ?? slug
+      }
+      if (d.tier_key) {
+        const slug = d.tier_key.replace(/^staff\.role\./, '')
+        tierLabel = d.tier_label ?? labelForTier(slug) ?? slug
+      }
+
+      // Legacy fallback: a row predating the redesign carries a single
+      // `role_key` that's either a department or a tier; classify it.
+      if (!departmentLabel && !tierLabel && d.role_key) {
+        const slug = d.role_key.replace(/^staff\.role\./, '')
+        const tierGuess = labelForTier(slug)
+        if (tierGuess) tierLabel = d.role_label ?? tierGuess
+        else departmentLabel = d.role_label ?? labelForDepartment(slug) ?? slug
+      }
+
       return {
         id: r.id,
-        roleSlug,
-        roleLabel: d.role_label ?? labelForSlug(roleSlug) ?? roleSlug,
+        departmentLabel,
+        tierLabel,
         realName: d.real_name ?? null,
-        reason: d.reason ?? null,
         createdAt: r.createdAt,
       }
     })
