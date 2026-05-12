@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`/otter/businesses/[slug]` gains hire/fire/promote/demote.** Four new write routes under `/api/otter/businesses/[slug]/employees/*` go through the matching bot verbs. Owner-only for hiring an owner, manager-or-owner for the rest. Each action audited with `before`/`after` rank.
+
 ### Fixed
 - **`web/src/app/(dashboard)/squishy/roles/RolesWriteUI.tsx` TS narrowing on `setError`.** The previous ternary collapsed to `{}` instead of `string | null` on the falsy branch — the `&&` chain's intermediate truthy `(parsed as object)` propagated. Split out `parsedErr` with a `typeof === 'string'` guard so `setError(msg)` gets a guaranteed string.
 
