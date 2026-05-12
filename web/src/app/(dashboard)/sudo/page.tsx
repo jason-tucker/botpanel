@@ -34,6 +34,8 @@ import {
   reportLog,
 } from '@/lib/db/schema/squishy'
 import { relTime } from '@/lib/util/format'
+import { resolveUsernames } from '@/lib/userDisplay'
+import { UserChip } from '@/components/UserChip'
 import { AddSudoUserForm, RevokeButton } from './SudoUserControls'
 import {
   ApproveButton,
@@ -58,6 +60,7 @@ type StaffApprovalRow = {
   userId: string
   requestedData: unknown
   status: string
+  reviewedBy: string | null
   createdAt: Date
 }
 
@@ -125,6 +128,7 @@ async function loadPendingApprovals(): Promise<StaffApprovalRow[]> {
       userId: staffApprovals.userId,
       requestedData: staffApprovals.requestedData,
       status: staffApprovals.status,
+      reviewedBy: staffApprovals.reviewedBy,
       createdAt: staffApprovals.createdAt,
     })
     .from(staffApprovals)
@@ -291,6 +295,28 @@ export default async function SudoHomePage() {
     console.warn('[sudo] report_log load failed', reportsRes.reason)
   }
 
+  // Batch-resolve every snowflake on this page in one RPC round-trip so
+  // the audit / approval / report tables can render `@displayName` +
+  // avatar instead of raw IDs. Empty Map on RPC failure → UserChip falls
+  // back to the raw id.
+  const userIds: string[] = []
+  if (sudoRows) {
+    for (const r of sudoRows) {
+      userIds.push(r.userId)
+      if (r.addedByDiscordId) userIds.push(r.addedByDiscordId)
+    }
+  }
+  if (approvals) {
+    for (const a of approvals) {
+      userIds.push(a.userId)
+      if (a.reviewedBy) userIds.push(a.reviewedBy)
+    }
+  }
+  if (reports) {
+    for (const r of reports) userIds.push(r.userId)
+  }
+  const userMap = await resolveUsernames('squishy', userIds)
+
   return (
     <div className="p-6 sm:p-10 pt-16 md:pt-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
@@ -346,17 +372,23 @@ export default async function SudoHomePage() {
                       key={`${r.source}:${r.userId}`}
                       className="border-b border-line last:border-b-0"
                     >
-                      <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
-                        &lt;@{r.userId}&gt;
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <UserChip
+                          userId={r.userId}
+                          resolved={userMap.get(r.userId) ?? null}
+                        />
                       </td>
                       <td className="px-3 py-2">
                         <SourcePill source={r.source} />
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs text-ink-dim whitespace-nowrap">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         {r.addedByDiscordId ? (
-                          <>&lt;@{r.addedByDiscordId}&gt;</>
+                          <UserChip
+                            userId={r.addedByDiscordId}
+                            resolved={userMap.get(r.addedByDiscordId) ?? null}
+                          />
                         ) : (
-                          <span className="italic">—</span>
+                          <span className="italic text-xs text-ink-dim">—</span>
                         )}
                       </td>
                       <td
@@ -430,8 +462,20 @@ export default async function SudoHomePage() {
                         key={a.id}
                         className="border-b border-line last:border-b-0"
                       >
-                        <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
-                          &lt;@{a.userId}&gt;
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <UserChip
+                            userId={a.userId}
+                            resolved={userMap.get(a.userId) ?? null}
+                          />
+                          {a.reviewedBy && (
+                            <div className="mt-1 flex items-baseline gap-1 text-[10px] text-ink-dim">
+                              reviewed by{' '}
+                              <UserChip
+                                userId={a.reviewedBy}
+                                resolved={userMap.get(a.reviewedBy) ?? null}
+                              />
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-sm">
                           <span className="font-mono text-xs">{roleKey}</span>
@@ -500,8 +544,11 @@ export default async function SudoHomePage() {
                           {r.reportType}
                         </div>
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
-                        &lt;@{r.userId}&gt;
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <UserChip
+                          userId={r.userId}
+                          resolved={userMap.get(r.userId) ?? null}
+                        />
                       </td>
                       <td className="px-3 py-2">
                         <ReportStatusPill status={r.status} />

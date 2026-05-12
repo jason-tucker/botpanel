@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **`<UserChip>` + `users.resolve` everywhere.** Audit tables, staff approvals, voice rosters now show `@displayName` with a small avatar instead of raw snowflakes. Batch-resolved server-side per page render (5-min in-process cache). Single-id endpoints `/api/{squishy,otter}/users/[id]` for live-updating client surfaces. Falls back to raw id if the bot is unreachable.
 - **Discord resource pickers across all Squishy settings forms.** New `<RolePicker>`, `<ChannelPicker>`, `<MemberPicker>` client components fetch live cache from squishybot via three new `meta.*` RPC verbs (60s panel-side cache for roles/channels; live for member typeahead). All snowflake-text-inputs in Hubs / Games / Reaction Roles / Welcome editors replaced. Falls back to a snowflake input + error banner if the bot is unreachable, so forms still work in degraded mode.
 - **`/otter/caked` Caked messaging page.** Manager-only post-to-channel page for contact / event / pricing / announcement cards. Routes through the bot's `caked.message_post` verb (renderers shared with `/caked` slash command). Audited as `caked.posted`.
 - **`/otter/businesses/[slug]` gains hire/fire/promote/demote.** Four new write routes under `/api/otter/businesses/[slug]/employees/*` go through the matching bot verbs. Owner-only for hiring an owner, manager-or-owner for the rest. Each action audited with `before`/`after` rank.

@@ -15,8 +15,12 @@
  * would be wasteful even at low scale. We derive the sorted array (newest
  * first) once per render via useMemo.
  *
- * Username lookup is V2 (resolved via the Redis command bus to the bot).
- * For now we render the raw Discord IDs — that's enough for sudo triage.
+ * Username lookup: the snapshot endpoint pre-resolves all visible ids to
+ * `@displayName` + avatar via the `users.resolve` RPC verb. SSE-driven
+ * deltas may introduce new ids (member_join, owner_changed) that the
+ * snapshot didn't have — a progressive `enhanceUser(id)` fetches each
+ * one via `/api/squishy/users/[id]` and patches the chip in place. Raw
+ * snowflake remains the fallback whenever resolution hasn't landed yet.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { VoiceControls } from './VoiceControls'
@@ -40,8 +44,15 @@ type Channel = {
   canControl: boolean
 }
 
+type ResolvedUser = {
+  username: string
+  displayName: string
+  avatarUrl: string
+}
+
 type SnapshotResponse = {
   channels: Channel[]
+  resolved?: Record<string, ResolvedUser>
   error?: string
 }
 
@@ -182,6 +193,45 @@ export function VoiceLive() {
   // Tick once a second so relative timestamps refresh without us having to
   // re-render on every event. Cheap because the map renders are memo-cheap.
   const [now, setNow] = useState(() => Date.now())
+  // Snapshot ships pre-resolved usernames; SSE deltas introduce new ids
+  // (`member_join`, `owner_changed`, freshly-created channels) which we
+  // enhance one-by-one via /api/squishy/users/[id]. `inFlight` dedups so
+  // a flood of joins for the same id doesn't fan out into N parallel
+  // fetches.
+  const [resolved, setResolved] = useState<Map<string, ResolvedUser>>(() => new Map())
+  const inFlight = useRef<Set<string>>(new Set())
+
+  const enhanceUser = useCallback(async (userId: string) => {
+    if (!userId) return
+    if (inFlight.current.has(userId)) return
+    inFlight.current.add(userId)
+    try {
+      const res = await fetch(`/api/squishy/users/${userId}`, { credentials: 'same-origin' })
+      if (!res.ok) return
+      const data = (await res.json()) as {
+        username: string | null
+        displayName: string | null
+        avatarUrl: string | null
+      }
+      if (data.username && data.displayName && data.avatarUrl) {
+        setResolved((prev) => {
+          if (prev.has(userId)) return prev
+          const next = new Map(prev)
+          next.set(userId, {
+            username: data.username!,
+            displayName: data.displayName!,
+            avatarUrl: data.avatarUrl!,
+          })
+          return next
+        })
+      }
+    } catch {
+      // Network error; the chip falls back to the raw id. Try again on
+      // the next render cycle that references this id.
+    } finally {
+      inFlight.current.delete(userId)
+    }
+  }, [])
 
   const esRef = useRef<EventSource | null>(null)
 
@@ -197,6 +247,18 @@ export function VoiceLive() {
       const m = new Map<string, Channel>()
       for (const c of data.channels) m.set(c.voiceChannelId, c)
       setChannels(m)
+      // Merge any newly-shipped resolutions in — don't overwrite, since
+      // SSE-driven enhances may have already filled an id the snapshot
+      // didn't have (rare race but cheap to handle).
+      if (data.resolved) {
+        setResolved((prev) => {
+          const next = new Map(prev)
+          for (const [id, v] of Object.entries(data.resolved!)) {
+            if (!next.has(id)) next.set(id, v)
+          }
+          return next
+        })
+      }
       if (data.error) setSnapshotError(data.error)
       else setSnapshotError(null)
     } catch (err) {
@@ -266,6 +328,24 @@ export function VoiceLive() {
     return () => clearInterval(t)
   }, [])
 
+  // ── Progressive enhancement: chase any unresolved id ────────────────
+  // Every time the channel state changes (snapshot refresh, SSE join,
+  // owner transfer), scan the visible ids and queue a single-id fetch
+  // for anyone we don't have a chip for yet. `enhanceUser` has its own
+  // in-flight dedup so this can run on every channel-state churn.
+  useEffect(() => {
+    for (const c of channels.values()) {
+      if (c.ownerUserId && !resolved.has(c.ownerUserId)) void enhanceUser(c.ownerUserId)
+      if (c.actingOwnerUserId && !resolved.has(c.actingOwnerUserId)) void enhanceUser(c.actingOwnerUserId)
+      for (const h of c.hostUserIds) {
+        if (!resolved.has(h)) void enhanceUser(h)
+      }
+      for (const m of c.members) {
+        if (!resolved.has(m.userId)) void enhanceUser(m.userId)
+      }
+    }
+  }, [channels, resolved, enhanceUser])
+
   const sorted = useMemo(() => {
     return Array.from(channels.values()).sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt),
@@ -311,11 +391,58 @@ export function VoiceLive() {
             key={c.voiceChannelId}
             channel={c}
             now={now}
+            resolved={resolved}
             onMutated={fetchSnapshot}
           />
         ))}
       </div>
     </section>
+  )
+}
+
+/**
+ * Inline UserChip variant for this client component. Renders `[avatar]
+ * @displayName` when we've resolved the id; otherwise a monospace raw
+ * snowflake with a tooltip. Mirrors `<UserChip>` in
+ * `@/components/UserChip` but is duplicated here because that component
+ * is server-only (no `'use client'`) and can't be imported by a client
+ * component directly.
+ */
+function UserChipClient({
+  userId,
+  resolved,
+}: {
+  userId: string
+  resolved: ResolvedUser | null
+}) {
+  if (!resolved) {
+    return (
+      <span
+        className="inline-flex items-center font-mono text-xs text-ink whitespace-nowrap"
+        title={userId}
+      >
+        {userId}
+      </span>
+    )
+  }
+  const label = resolved.displayName || resolved.username
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 align-middle whitespace-nowrap"
+      title={`${userId} · @${resolved.username}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={resolved.avatarUrl}
+        alt=""
+        width={24}
+        height={24}
+        className="h-6 w-6 rounded-full border border-line"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
+      <span className="text-sm text-ink">@{label}</span>
+    </span>
   )
 }
 
@@ -344,10 +471,12 @@ function StatusBadge({ status }: { status: Status }) {
 function ChannelCard({
   channel,
   now,
+  resolved,
   onMutated,
 }: {
   channel: Channel
   now: number
+  resolved: Map<string, ResolvedUser>
   onMutated: () => void
 }) {
   const effectiveOwner = channel.actingOwnerUserId ?? channel.ownerUserId
@@ -390,18 +519,28 @@ function ChannelCard({
       </header>
 
       <div className="flex flex-col gap-1 text-sm">
-        <div className="flex gap-2 items-baseline">
+        <div className="flex gap-2 items-center">
           <span className="text-xs uppercase tracking-wider text-ink-dim">
             {channel.actingOwnerUserId ? 'Acting owner' : 'Owner'}
           </span>
-          <span className="font-mono text-ink">{effectiveOwner || '—'}</span>
+          {effectiveOwner ? (
+            <UserChipClient
+              userId={effectiveOwner}
+              resolved={resolved.get(effectiveOwner) ?? null}
+            />
+          ) : (
+            <span className="text-ink-dim">—</span>
+          )}
         </div>
         {channel.actingOwnerUserId && (
-          <div className="flex gap-2 items-baseline">
+          <div className="flex gap-2 items-center">
             <span className="text-xs uppercase tracking-wider text-ink-dim">
               Original
             </span>
-            <span className="font-mono text-ink-dim">{channel.ownerUserId}</span>
+            <UserChipClient
+              userId={channel.ownerUserId}
+              resolved={resolved.get(channel.ownerUserId) ?? null}
+            />
           </div>
         )}
       </div>
@@ -417,9 +556,12 @@ function ChannelCard({
             {channel.members.map((m) => (
               <li
                 key={m.userId}
-                className="flex items-baseline justify-between gap-3 text-sm"
+                className="flex items-center justify-between gap-3 text-sm"
               >
-                <span className="font-mono text-ink truncate">{m.userId}</span>
+                <UserChipClient
+                  userId={m.userId}
+                  resolved={resolved.get(m.userId) ?? null}
+                />
                 <span className="text-ink-dim text-xs whitespace-nowrap">
                   joined {relativeTime(m.joinedAt, now)}
                 </span>

@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { desc } from 'drizzle-orm'
 import { withAuth } from '@/lib/auth/middleware'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
+import { resolveUsernames } from '@/lib/userDisplay'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -105,10 +106,27 @@ export const GET = withAuth(
         }
       })
 
-      return NextResponse.json({ channels: rows })
+      // Batch-resolve every snowflake referenced by the snapshot (owners,
+      // acting owners, hosts, members) into `{username, displayName,
+      // avatarUrl}` so the client can render chips without a follow-up
+      // round-trip. 5-min in-process cache lives in `userDisplay.ts` so
+      // the polling client doesn't pelt the bot every refresh. On RPC
+      // failure the Map is empty and VoiceLive falls back to raw ids.
+      const userIds: string[] = []
+      for (const c of rows) {
+        userIds.push(c.ownerUserId)
+        if (c.actingOwnerUserId) userIds.push(c.actingOwnerUserId)
+        for (const h of c.hostUserIds) userIds.push(h)
+        for (const m of c.members) userIds.push(m.userId)
+      }
+      const resolvedMap = await resolveUsernames('squishy', userIds.filter(Boolean))
+      const resolved: Record<string, { username: string; displayName: string; avatarUrl: string }> = {}
+      for (const [id, v] of resolvedMap) resolved[id] = v
+
+      return NextResponse.json({ channels: rows, resolved })
     } catch (err) {
       console.warn('[voice/list] DB unreachable; returning empty snapshot', err)
-      return NextResponse.json({ channels: [], error: 'db-unavailable' })
+      return NextResponse.json({ channels: [], resolved: {}, error: 'db-unavailable' })
     }
   },
   { require: 'sudo' },
