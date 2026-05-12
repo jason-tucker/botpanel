@@ -28,15 +28,60 @@
  */
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { env } from '@/lib/env'
+import { labelForSlug } from '@/lib/squishyStaffRoles'
 import { ProfileEditor, type EditableProfile } from './ProfileEditor'
+import { StaffRequestCard, type PendingStaffRequest } from './StaffRequestCard'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+
+async function loadPendingStaffRequests(
+  guildId: string,
+  userId: string,
+): Promise<PendingStaffRequest[]> {
+  try {
+    const rows = await squishyDb
+      .select({
+        id: squishySchema.staffApprovals.id,
+        requestedData: squishySchema.staffApprovals.requestedData,
+        createdAt: squishySchema.staffApprovals.createdAt,
+      })
+      .from(squishySchema.staffApprovals)
+      .where(
+        and(
+          eq(squishySchema.staffApprovals.guildId, guildId),
+          eq(squishySchema.staffApprovals.userId, userId),
+          eq(squishySchema.staffApprovals.status, 'pending'),
+        ),
+      )
+      .orderBy(desc(squishySchema.staffApprovals.createdAt))
+    return rows.map((r) => {
+      const d = (r.requestedData ?? {}) as {
+        role_key?: string
+        role_label?: string
+        real_name?: string | null
+        reason?: string | null
+      }
+      const roleSlug = d.role_key?.replace(/^staff\.role\./, '') ?? ''
+      return {
+        id: r.id,
+        roleSlug,
+        roleLabel: d.role_label ?? labelForSlug(roleSlug) ?? roleSlug,
+        realName: d.real_name ?? null,
+        reason: d.reason ?? null,
+        createdAt: r.createdAt,
+      }
+    })
+  } catch (err) {
+    console.warn('[squishy/profiles/:id/edit] pending staff load failed', err)
+    return []
+  }
+}
 
 async function loadProfile(
   guildId: string,
@@ -135,6 +180,11 @@ export default async function EditProfilePage({
   }
 
   const profile = await loadProfile(env.GUILD_ID, id)
+  // Only load pending staff requests when the user is viewing their own
+  // profile — sudo viewers editing someone else don't get the
+  // staff-request card (filing for someone else doesn't make sense; sudo
+  // already has `/sudo → Direct Grant`).
+  const pendingStaff = isSelf ? await loadPendingStaffRequests(env.GUILD_ID, id) : []
   const headerName =
     profile?.displayName ?? profile?.realName ?? (isSelf ? session.username : id)
 
@@ -164,12 +214,15 @@ export default async function EditProfilePage({
           {mode === 'self' && (
             <p className="text-xs text-ink-dim mt-2">
               Staff fields (category / department / tier / leadership title)
-              are sudo-only and aren&apos;t shown here.
+              are sudo-only and aren&apos;t shown here. You can request a
+              staff role below.
             </p>
           )}
         </header>
 
         <ProfileEditor id={id} mode={mode} profile={profile} />
+
+        {isSelf && <StaffRequestCard pending={pendingStaff} />}
       </div>
     </main>
   )
