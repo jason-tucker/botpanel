@@ -2,8 +2,21 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { exchangeCode, fetchMe } from '@/lib/auth/discord'
 import { mintSession, setSessionCookie } from '@/lib/auth/session'
+import { env } from '@/lib/env'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * Returns the canonical home URL for this clone. We don't use `req.url`'s
+ * origin because behind Caddy the upstream sees `HOSTNAME:PORT` (e.g.
+ * `http://0.0.0.0:3000`), not the public address — using it would redirect
+ * the user back to the internal Next listen address. `PUBLIC_BASE_URL` is
+ * already required for OAuth to work, so it's safe to rely on.
+ */
+function homeUrl(qs = ''): string {
+  const base = (env.PUBLIC_BASE_URL ?? '').replace(/\/$/, '')
+  return base + '/' + qs
+}
 
 /** GET /api/auth/callback?code=...&state=... */
 export async function GET(req: Request) {
@@ -11,7 +24,7 @@ export async function GET(req: Request) {
   const code = url.searchParams.get('code')
   const state = url.searchParams.get('state')
   if (!code || !state) {
-    return NextResponse.redirect(new URL('/?error=missing_params', url.origin))
+    return NextResponse.redirect(homeUrl('?error=missing_params'))
   }
 
   // Verify state against the single-use cookie set in /api/auth/login.
@@ -19,7 +32,7 @@ export async function GET(req: Request) {
   const expected = c.get('__Host-oauth-state')?.value
   c.delete('__Host-oauth-state')
   if (!expected || expected !== state) {
-    return NextResponse.redirect(new URL('/?error=bad_state', url.origin))
+    return NextResponse.redirect(homeUrl('?error=bad_state'))
   }
 
   try {
@@ -32,9 +45,9 @@ export async function GET(req: Request) {
       avatar: user.avatar,
     })
     await setSessionCookie(token)
-    return NextResponse.redirect(new URL('/', url.origin))
+    return NextResponse.redirect(homeUrl())
   } catch (err) {
     console.error('OAuth callback failed:', err)
-    return NextResponse.redirect(new URL('/?error=callback_failed', url.origin))
+    return NextResponse.redirect(homeUrl('?error=callback_failed'))
   }
 }
