@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`<UserChip>` + `users.resolve` everywhere.** Audit tables, staff approvals, voice rosters now show `@displayName` with a small avatar instead of raw snowflakes. Batch-resolved server-side per page render (5-min in-process cache). Single-id endpoints `/api/{squishy,otter}/users/[id]` for live-updating client surfaces. Falls back to raw id if the bot is unreachable.
+
 ### Fixed
 - **`web/src/app/(dashboard)/squishy/roles/RolesWriteUI.tsx` TS narrowing on `setError`.** The previous ternary collapsed to `{}` instead of `string | null` on the falsy branch — the `&&` chain's intermediate truthy `(parsed as object)` propagated. Split out `parsedErr` with a `typeof === 'string'` guard so `setError(msg)` gets a guaranteed string.
 

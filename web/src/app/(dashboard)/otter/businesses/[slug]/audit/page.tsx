@@ -27,6 +27,8 @@ import { otterDb } from '@/lib/db/otter'
 import { businesses } from '@/lib/db/schema/otter/businesses'
 import { auditLogs } from '@/lib/db/schema/otter/auditLogs'
 import { relTime } from '@/lib/util/otterFormat'
+import { resolveUsernames } from '@/lib/userDisplay'
+import { UserChip } from '@/components/UserChip'
 
 export const dynamic = 'force-dynamic'
 
@@ -196,6 +198,23 @@ export default async function BusinessAuditPage(
     ? Math.max(1, Math.ceil(result.total / PAGE_SIZE))
     : 1
 
+  // Batch-resolve every actor + impersonated (`details.viewing`) snowflake
+  // on this page in one RPC round-trip so the table can render
+  // `@displayName` + avatar instead of raw IDs. Empty Map on RPC failure;
+  // UserChip falls back to the raw id per row.
+  const userIds: string[] = []
+  if (result.ok) {
+    for (const a of result.rows) {
+      userIds.push(a.actorDiscordId)
+      const d = a.details
+      if (d && typeof d === 'object') {
+        const v = (d as Record<string, unknown>).viewing
+        if (typeof v === 'string' && v.length > 0) userIds.push(v)
+      }
+    }
+  }
+  const userMap = await resolveUsernames('otter', userIds)
+
   return (
     <main className="min-h-dvh p-6 sm:p-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
@@ -283,8 +302,27 @@ export default async function BusinessAuditPage(
                         {a.targetType ?? '—'}
                         {a.targetId ? `/${a.targetId}` : ''}
                       </span>
-                      <span className="text-xs text-ink-dim font-mono truncate max-w-[14rem]">
-                        {a.actorName} · {`<@${a.actorDiscordId}>`}
+                      <span className="text-xs text-ink-dim truncate max-w-[18rem] flex items-center gap-1">
+                        <UserChip
+                          userId={a.actorDiscordId}
+                          resolved={userMap.get(a.actorDiscordId) ?? null}
+                        />
+                        {(() => {
+                          const d = a.details
+                          if (!d || typeof d !== 'object') return null
+                          const v = (d as Record<string, unknown>).viewing
+                          if (typeof v !== 'string' || v.length === 0) return null
+                          if (v === a.actorDiscordId) return null
+                          return (
+                            <>
+                              <span className="text-ink-dim">→</span>
+                              <UserChip
+                                userId={v}
+                                resolved={userMap.get(v) ?? null}
+                              />
+                            </>
+                          )
+                        })()}
                       </span>
                       <span
                         className="text-xs text-ink-dim whitespace-nowrap"
