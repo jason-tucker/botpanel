@@ -75,7 +75,11 @@ export const POST = withAuth(
       )
     }
 
-    const reply = await callBot('squishy', 'staff.revoke', { userId, roleKey })
+    // 20s timeout: staff.revoke chains the same Discord API calls as
+    // staff.grant (see grant/route.ts for the rationale).
+    const reply = await callBot('squishy', 'staff.revoke', { userId, roleKey }, {
+      timeoutMs: 20_000,
+    })
 
     await writeAudit({
       bot: 'squishy',

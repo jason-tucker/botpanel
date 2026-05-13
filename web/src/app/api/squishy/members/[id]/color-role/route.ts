@@ -102,10 +102,13 @@ export const POST = withAuth(
       )
     }
 
+    // 20s timeout: color.assign does member.fetch + remove-current-color
+    // + add-new-color on Discord. Same posture as staff.grant/revoke.
     const reply = await callBot<{ userId: string; roleKey: string | null; applied: boolean }>(
       'squishy',
       'color.assign',
       { userId: targetUserId, roleKey },
+      { timeoutMs: 20_000 },
     )
 
     if (!reply.ok) {

@@ -96,6 +96,9 @@ export const POST = withAuth(
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
 
+    // 20s timeout: games.set_prefs does an uncached members.fetch() PLUS
+    // an N×roles.add/remove per row. A wide pref change with cold cache
+    // can chain 20+ Discord API calls. Matches the timeout on /me/games.
     const reply = await callBot<{
       applied: number
       skipped: number
@@ -103,7 +106,7 @@ export const POST = withAuth(
     }>('squishy', 'games.set_prefs', {
       userId: targetUserId,
       prefs: parsed.prefs,
-    })
+    }, { timeoutMs: 20_000 })
 
     if (!reply.ok) {
       await writeAudit({

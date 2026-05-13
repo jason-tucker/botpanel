@@ -90,7 +90,12 @@ export const POST = withAuth(
       )
     }
 
-    const reply = await callBot('squishy', 'staff.grant', { userId, roleKey })
+    // 20s timeout: staff.grant chains 4 Discord API calls (guild.fetch
+    // → role.fetch → member.fetch → roles.add). The default 5s
+    // surfaced as a UI timeout even when the grant ultimately succeeded.
+    const reply = await callBot('squishy', 'staff.grant', { userId, roleKey }, {
+      timeoutMs: 20_000,
+    })
 
     await writeAudit({
       bot: 'squishy',

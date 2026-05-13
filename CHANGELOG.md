@@ -7,7 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Members-section RPC timeouts bumped from 5 s → 20 s.** `/squishy/members/[id]` staff grant/revoke, game prefs save, and color-role assign each chain 3–5 Discord API calls (guild.fetch → role.fetch → member.fetch → roles.add/remove). On a cold member cache or rate-limited Discord, 5 s frequently surfaced as a UI timeout even when the bot ultimately succeeded. Bumped `callBot(..., { timeoutMs: 20_000 })` on `/api/sudo/staff/grant`, `/api/sudo/staff/revoke`, `/api/squishy/members/[id]/games`, and `/api/squishy/members/[id]/color-role`. Matches the `/me/games` timeout posture that already shipped.
+
 ### Added
+- **SquishyBot's avatar is now the site favicon.** Fetched from the bot's Discord user (1433597605966778509) and saved as `web/src/app/icon.png` + `apple-icon.png`. Next.js 15 App Router auto-serves both at `/favicon.ico` and `/apple-icon.png`.
+
 - **`/otter/move-channel` — manager+ panel mirror of `/movechannel`.** Two ChannelPickers (any non-category channel + category-only) + top/bottom radio. Submits to new `/api/otter/move-channel` route, gated to "manager+ of at least one active business OR sudo" (same authorization as the slash command). Calls the new otter `discord.move_channel` RPC verb (jason-tucker/otterbot#54). Existing channel permissions are preserved on move (`lockPermissions: false`). Audited as `discord.channel_moved` with before/after category names.
 
 ### Added
