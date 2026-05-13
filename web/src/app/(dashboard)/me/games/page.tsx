@@ -45,45 +45,50 @@ export default async function MyGamesPage() {
   let loadError: string | null = null
 
   try {
-    const rows = await squishyDb
+    const guildId = env.GUILD_ID
+
+    // Parallelize the two reads — they're independent (catalog has no
+    // per-user join, prefs is keyed on (guildId, userId)). Also push the
+    // visible/non-archived filter into the SQL WHERE clause instead of
+    // SELECT-everything-then-filter-in-JS: at the table's small size it
+    // doesn't matter much today, but with no index the planner was
+    // scanning every row including soft-archived games we'd then discard.
+    const catalogPromise = squishyDb
       .select({
         id: squishySchema.games.id,
         name: squishySchema.games.name,
         aliases: squishySchema.games.aliases,
         channelId: squishySchema.games.channelId,
         pingRoleId: squishySchema.games.pingRoleId,
-        sortOrder: squishySchema.games.sortOrder,
-        isArchived: squishySchema.games.isArchived,
-        isVisible: squishySchema.games.isVisible,
       })
       .from(squishySchema.games)
+      .where(
+        and(
+          eq(squishySchema.games.isArchived, false),
+          eq(squishySchema.games.isVisible, true),
+        ),
+      )
       .orderBy(asc(squishySchema.games.sortOrder), asc(squishySchema.games.name))
-    catalog = rows
-      .filter((g) => !g.isArchived && g.isVisible)
-      .map(({ id, name, aliases, channelId, pingRoleId }) => ({
-        id,
-        name,
-        aliases,
-        channelId,
-        pingRoleId,
-      }))
 
-    const guildId = env.GUILD_ID
-    if (guildId) {
-      prefs = await squishyDb
-        .select({
-          gameId: squishySchema.userGamePrefs.gameId,
-          wantsView: squishySchema.userGamePrefs.wantsView,
-          wantsPing: squishySchema.userGamePrefs.wantsPing,
-        })
-        .from(squishySchema.userGamePrefs)
-        .where(
-          and(
-            eq(squishySchema.userGamePrefs.guildId, guildId),
-            eq(squishySchema.userGamePrefs.userId, viewerId),
-          ),
-        )
-    }
+    const prefsPromise = guildId
+      ? squishyDb
+          .select({
+            gameId: squishySchema.userGamePrefs.gameId,
+            wantsView: squishySchema.userGamePrefs.wantsView,
+            wantsPing: squishySchema.userGamePrefs.wantsPing,
+          })
+          .from(squishySchema.userGamePrefs)
+          .where(
+            and(
+              eq(squishySchema.userGamePrefs.guildId, guildId),
+              eq(squishySchema.userGamePrefs.userId, viewerId),
+            ),
+          )
+      : Promise.resolve([] as typeof prefs)
+
+    const [catalogRows, prefRows] = await Promise.all([catalogPromise, prefsPromise])
+    catalog = catalogRows
+    prefs = prefRows
   } catch (err) {
     console.warn('[me/games] load failed', err)
     loadError = (err as Error).message

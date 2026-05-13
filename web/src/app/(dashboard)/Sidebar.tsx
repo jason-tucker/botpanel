@@ -20,6 +20,7 @@
  * is intentionally NOT persisted — opening a link on mobile auto-closes
  * via the `onClick` handler.
  */
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
@@ -289,10 +290,14 @@ export function Sidebar({
       <div className="border-t border-line p-3 flex flex-col gap-2">
         <div className="flex items-center gap-3 px-1">
           {avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            // priority — the sidebar renders on every authed page, the user's
+            // own avatar is above the fold, no point lazy-loading it.
+            <Image
               src={avatar}
               alt=""
+              width={32}
+              height={32}
+              priority
               className="w-8 h-8 rounded-full border border-line"
             />
           ) : (

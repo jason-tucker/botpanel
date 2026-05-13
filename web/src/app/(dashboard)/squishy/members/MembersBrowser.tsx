@@ -17,6 +17,7 @@
  * Empty state, error state, and loading state are all handled inline so
  * the surrounding page stays a simple gate.
  */
+import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
@@ -133,14 +134,15 @@ export function MembersBrowser() {
               className={rowCls}
               aria-label={`Manage ${m.displayName || m.username}`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              {/* next/image — Discord CDN allowlisted in next.config.mjs.
+                  This list renders 25+ rows so lazy-loading (default) is the
+                  big win here, plus auto-WebP + srcset for high-DPI. */}
+              <Image
                 src={m.avatarUrl}
                 alt=""
                 width={24}
                 height={24}
                 className="h-6 w-6 rounded-full border border-line"
-                loading="lazy"
                 referrerPolicy="no-referrer"
               />
               <div className="flex min-w-0 flex-1 items-baseline gap-2">
