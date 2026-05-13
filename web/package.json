@@ -13,7 +13,7 @@
     "verify:schemas": "bash ../scripts/sync-schema.sh && git diff --exit-code -- src/lib/db/schema || (echo '❌ Schemas drifted — re-run pnpm sync:schemas and commit' && exit 1)"
   },
   "dependencies": {
-    "drizzle-orm": "^0.36.0",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.4.1",
     "jose": "^5.9.6",
     "lucide-react": "^0.460.0",
