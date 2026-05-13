@@ -11,13 +11,17 @@
  *    starves the others.
  *  - Heartbeat comment frame `: ping\n\n` every 30s. Cloudflare's idle
  *    timeout is 100s; 30s gives plenty of margin and is cheap.
- *  - Gated by `withAuth({ require: 'sudo' })` — non-sudo callers must not
- *    be able to tap the firehose. The middleware already gates the page
- *    route; this is defense in depth at the API surface.
+ *  - Gated by `withAuth({ require: 'any' })` — but events are FILTERED
+ *    per-viewer. Sudo/bot-owner see everything. A regular user gets only
+ *    events about channels they have visibility to (currently a member
+ *    of, or owner/host/acting-owner of). The visibility set is seeded
+ *    from `auto_channels` + `auto_channel_members` on connect and mutated
+ *    by member_join / member_leave events involving the viewer themselves.
  */
 import type { NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
 import { getSubscriber } from '@/lib/redis'
+import { squishyDb, squishySchema } from '@/lib/db/squishy'
 
 // Node runtime is required — ioredis won't load on the edge.
 export const runtime = 'nodejs'
@@ -27,9 +31,38 @@ const PATTERN = 'bot.squishy.voice.*'
 const HEARTBEAT_MS = 30_000
 
 export const GET = withAuth(
-  async (req: NextRequest) => {
+  async (req: NextRequest, access) => {
     const sub = getSubscriber()
     const encoder = new TextEncoder()
+    const viewerId = access.viewing.id
+    const viewerIsPriv = access.botOwner || access.squishy.sudo
+
+    // Seed the viewer's visibility set from the DB. Sudo/owner skip the
+    // load — they see everything regardless. On DB failure we degrade to
+    // "no visible channels" rather than leaking the firehose.
+    const visibleChannelIds = new Set<string>()
+    if (!viewerIsPriv) {
+      try {
+        const [channels, members] = await Promise.all([
+          squishyDb.select().from(squishySchema.autoChannels),
+          squishyDb.select().from(squishySchema.autoChannelMembers),
+        ])
+        for (const c of channels) {
+          if (
+            c.ownerUserId === viewerId ||
+            c.actingOwnerUserId === viewerId ||
+            c.hostUserIds.includes(viewerId)
+          ) {
+            visibleChannelIds.add(c.voiceChannelId)
+          }
+        }
+        for (const m of members) {
+          if (m.userId === viewerId) visibleChannelIds.add(m.voiceChannelId)
+        }
+      } catch {
+        // empty set — viewer sees nothing live until they reload + the snapshot succeeds.
+      }
+    }
 
     // We attach our pmessage handler to the shared subscriber. Two reasons
     // we don't use a per-request Redis client:
@@ -63,6 +96,46 @@ export const GET = withAuth(
             // Bad publisher — skip rather than poison the stream.
             return
           }
+
+          // Per-viewer visibility filter — sudo/owner stream the whole
+          // firehose; everyone else only sees events about channels
+          // they're already inside or own/host. Visibility set is
+          // mutated in place by member_join / member_leave / new-channel
+          // events that affect the viewer themselves.
+          const payload = parsed as Record<string, unknown> | null
+          const eventChannelId =
+            typeof payload?.voiceChannelId === 'string' ? payload.voiceChannelId : null
+
+          if (!viewerIsPriv) {
+            if (!eventChannelId) return // unparseable payload — silently drop
+            const eventUserId =
+              typeof payload?.userId === 'string'
+                ? payload.userId
+                : typeof payload?.newOwnerUserId === 'string'
+                  ? payload.newOwnerUserId
+                  : null
+
+            // Member-join / new-channel events involving the VIEWER themselves
+            // extend visibility. Member-leave events involving the viewer
+            // emit one final frame (so the client can remove the row from
+            // its UI) before contracting visibility.
+            if ((event === 'member_join' || event === 'created') && eventUserId === viewerId) {
+              visibleChannelIds.add(eventChannelId)
+            }
+            const inSet = visibleChannelIds.has(eventChannelId)
+            if (!inSet) return
+
+            if (event === 'member_leave' && eventUserId === viewerId) {
+              // Forward the leave-frame, then drop visibility on the
+              // next event (so member_leave is the last thing the viewer
+              // sees for this channel unless they're still owner/host).
+              visibleChannelIds.delete(eventChannelId)
+            }
+            if (event === 'deleted') {
+              visibleChannelIds.delete(eventChannelId)
+            }
+          }
+
           const frame = `data: ${JSON.stringify({ event, payload: parsed })}\n\n`
           try {
             controller.enqueue(encoder.encode(frame))
@@ -123,5 +196,5 @@ export const GET = withAuth(
       },
     })
   },
-  { require: 'sudo' },
+  { require: 'any' },
 )
