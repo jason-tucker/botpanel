@@ -181,11 +181,53 @@ function applyOwnerChanged(map: Map<string, Channel>, p: Record<string, unknown>
   return next
 }
 
+/**
+ * Update the host list AND recompute the viewer's `canControl` flag for
+ * this channel. The bot publishes `voice.hosts_changed` with `{op, userId}`
+ * after every grant/revoke. Without this handler, a user just-promoted to
+ * host wouldn't see the Controls button appear until they refreshed, and
+ * a just-demoted host would still see stale controls until next snapshot
+ * fetch (clicking them would 403 server-side, but the UX is misleading).
+ */
+function applyHostsChanged(
+  map: Map<string, Channel>,
+  p: Record<string, unknown>,
+  viewerId: string,
+  viewerIsPriv: boolean,
+): Map<string, Channel> {
+  const id = asString(p.voiceChannelId)
+  const userId = asString(p.userId)
+  const op = asString(p.op)
+  if (!id || !userId || (op !== 'add' && op !== 'remove')) return map
+  const ch = map.get(id)
+  if (!ch) return map
+  const nextHosts =
+    op === 'add'
+      ? ch.hostUserIds.includes(userId)
+        ? ch.hostUserIds
+        : [...ch.hostUserIds, userId]
+      : ch.hostUserIds.filter((h) => h !== userId)
+  const canControl =
+    viewerIsPriv ||
+    viewerId === ch.ownerUserId ||
+    nextHosts.includes(viewerId) ||
+    ch.actingOwnerUserId === viewerId
+  const next = new Map(map)
+  next.set(id, { ...ch, hostUserIds: nextHosts, canControl })
+  return next
+}
+
 // ---------------------------------------------------------------------------
 // Main component.
 // ---------------------------------------------------------------------------
 
-export function VoiceLive() {
+export function VoiceLive({
+  viewerId,
+  viewerIsPriv,
+}: {
+  viewerId: string
+  viewerIsPriv: boolean
+}) {
   const [channels, setChannels] = useState<Map<string, Channel>>(() => new Map())
   const [status, setStatus] = useState<Status>('connecting')
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
@@ -308,8 +350,10 @@ export function VoiceLive() {
             return applyHiddenToggled(prev, payload)
           case 'owner_changed':
             return applyOwnerChanged(prev, payload)
-          // hosts_changed / lockdown_started / lockdown_ended are wired up
-          // by the firehose but don't impact the snapshot shape today.
+          case 'hosts_changed':
+            return applyHostsChanged(prev, payload, viewerId, viewerIsPriv)
+          // lockdown_started / lockdown_ended are wired up by the firehose
+          // but don't impact the snapshot shape today.
           default:
             return prev
         }
@@ -320,7 +364,7 @@ export function VoiceLive() {
       es.close()
       esRef.current = null
     }
-  }, [])
+  }, [viewerId, viewerIsPriv])
 
   // ── Tick for relative timestamps ───────────────────────────────────
   useEffect(() => {

@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed
+- **Voice host promotion/demotion now reflects on the panel instantly.** `/squishy/voice` was ignoring the `voice.hosts_changed` SSE event. The page now handles it locally: mutates `hostUserIds` and recomputes `canControl` for the viewer using their session-side `viewerId` + `viewerIsPriv` flags (threaded from the server-rendered page). A user who just got promoted to host sees the Controls button appear without refreshing; a just-demoted host sees it disappear.
+
 - **`/` auto-redirects signed-in viewers to `/me` when both bots are online.** The landing page is mostly a "is this thing on?" indicator for unauth'd or partial-outage states; if the viewer has a session AND every bot reports online AND there's no sign-in-error to surface, redirect straight to the dashboard.
 
 ### Added
