@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`/me/staff` — self-service staff-role request page.** Direct mirror of squishybot's `/settings → Staff Role` button. Sits in the panel's `/settings` sidebar group alongside `/me/edit` (Profile & Birthday) and `/me/games` (Game Prefs) so the slash flow → panel flow is 1:1. Reuses the existing `<StaffRequestCard>` from the profile editor (single source of truth — same form, same submit handler, same pending-requests display). Sudo / bot-owner viewers see the "Sudo · instant" variant the existing `/api/squishy/staff/request` route already short-circuits. Extracted `loadPendingStaffRequests` into `src/lib/staffRequests.ts` so both the profile editor and the new page query identically.
+
 ### Changed
 - **Sidebar regrouped to mirror the Discord slash-command flow.** Headings now read like slash commands so a user fluent in the bot finds the panel intuitive. New groups: `/settings` (Profile & Birthday · Game Prefs · `/voice`), `Squishy · /sudo` (Settings · Manage User · Hubs — direct map of the `/sudo` select-menu panel), `Squishy · More` (Welcome/Goodbye · Profiles · Games catalog · Automation · Roles · Archives · Audit log — surfaces with no slash equivalent), and `Otter` whose links are labelled by command (`/portal` · `/lookup · MKE` · `/oc` · `/caked`). No pages moved or renamed — only the sidebar IA changed. The remaining `/sudo` buttons that don't have a panel page yet (Game Night, Pending Approvals, Force Cleanup, Run Reconciler) and the missing Otter slash mirrors (`/lookup`, `/business`, `/employee`, `/printinfo`, `/artsize`, `/tcsheet`, `/movechannel`) land in follow-up PRs. Top-level "Edit my profile" / "My game prefs" / "Active Voice" / "Report a bug" links collapsed into the new groups (`Profile & Birthday`, `Game Prefs`, `/voice`, `/report`).
 

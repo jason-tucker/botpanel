@@ -158,8 +158,7 @@ export function Sidebar({
     links: [
       { href: '/me/edit', label: 'Profile & Birthday' },
       { href: '/me/games', label: 'Game Prefs' },
-      // Self-service staff role request lives at /me/staff in PR 2.
-      // Until then, the Squishy admin members page covers it via View-As.
+      { href: '/me/staff', label: 'Staff Role' },
     ],
   }
   // Voice control panel — squishy's `/voice` slash gets its own entry
