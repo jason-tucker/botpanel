@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **`/` auto-redirects signed-in viewers to `/me` when both bots are online.** The landing page is mostly a "is this thing on?" indicator for unauth'd or partial-outage states; if the viewer has a session AND every bot reports online AND there's no sign-in-error to surface, redirect straight to the dashboard.
+
 ### Added
 - **Host management on `/squishy/voice` per-channel controls.** The "Hosts" section was a read-only placeholder ("host management lands in a later wave"); it's now a real editor: each existing host gets an `✕` remove button, and a `<MemberPicker>` + "Add host" button at the bottom appends a new one. Calls a new `/api/squishy/voice/[id]/hosts/toggle` route which fires the new squishybot `voice.toggle_host` RPC verb. Same gate as transfer/delete (owner / acting-owner / sudo / bot-owner) — hosts can't add their peers; that stays owner-only.
 

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
 import { getHeartbeats } from '@/lib/heartbeats'
 import { env } from '@/lib/env'
@@ -236,6 +237,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   const errorMsg = params.error ? (ERROR_MESSAGES[params.error] ?? `Sign-in error: ${params.error}`) : null
 
   const heartbeats = readHeartbeatsSafe()
+
+  // If the viewer is signed in AND both bots are online AND there's no
+  // sign-in error to show, send them straight to `/me` — the landing page
+  // is mostly a "is this thing on?" indicator for unauth'd or partial-outage
+  // states, so skipping it when everything's green saves a click.
+  if (session && !errorMsg) {
+    const bots = buildBotStatuses(heartbeats)
+    const allOnline = bots.length > 0 && bots.every((b) => b.online)
+    if (allOnline) {
+      redirect('/me')
+    }
+  }
 
   return (
     <main className="min-h-dvh flex flex-col items-center px-4 py-10 sm:py-16">
