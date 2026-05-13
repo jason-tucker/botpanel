@@ -19,6 +19,7 @@
  */
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { MemberPicker } from '@/components/pickers/MemberPicker'
 
 export function AddSudoUserForm() {
   const router = useRouter()
@@ -32,15 +33,9 @@ export function AddSudoUserForm() {
       <label className="text-xs uppercase tracking-wider text-ink-dim">
         Add sudo user
       </label>
-      <input
-        type="text"
-        name="userId"
-        placeholder="Discord user id (snowflake)"
-        pattern="\d{15,25}"
-        title="Discord user id (15-25 digit snowflake)"
-        required
-        className="w-72 rounded border border-line bg-bg-card px-2 py-1 font-mono text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
-      />
+      <div className="w-72">
+        <MemberPicker name="userId" placeholder="Search members…" />
+      </div>
       <button
         type="submit"
         className="rounded border border-line bg-bg-card px-3 py-1 text-xs text-ink hover:bg-bg-card2"

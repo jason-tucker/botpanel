@@ -35,6 +35,7 @@
  */
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { MemberPicker } from '@/components/pickers/MemberPicker'
 
 /** Mirror of `squishybot/src/services/staffRoles.ts` — must be kept in sync. */
 export const STAFF_ROLE_SLUGS: ReadonlyArray<{ slug: string; label: string }> = [
@@ -48,8 +49,6 @@ export const STAFF_ROLE_SLUGS: ReadonlyArray<{ slug: string; label: string }> = 
   { slug: 'leadership', label: 'Leadership' },
 ]
 
-const inputCls =
-  'rounded border border-line bg-bg-card px-2 py-1 font-mono text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent'
 const selectCls =
   'rounded border border-line bg-bg-card px-2 py-1 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent'
 
@@ -160,15 +159,9 @@ export function DirectGrantForm({
       {pinnedTarget ? (
         <input type="hidden" name="userId" value={defaultUserId} />
       ) : (
-        <input
-          type="text"
-          name="userId"
-          placeholder="Discord user id"
-          pattern="\d{15,25}"
-          title="Discord user id (15-25 digit snowflake)"
-          required
-          className={`${inputCls} w-56`}
-        />
+        <div className="w-56">
+          <MemberPicker name="userId" placeholder="Search members…" />
+        </div>
       )}
       <select name="roleKey" required defaultValue="tier_1" className={selectCls}>
         {STAFF_ROLE_SLUGS.map((r) => (
@@ -223,15 +216,9 @@ export function DirectRevokeForm({
       {pinnedTarget ? (
         <input type="hidden" name="userId" value={defaultUserId} />
       ) : (
-        <input
-          type="text"
-          name="userId"
-          placeholder="Discord user id"
-          pattern="\d{15,25}"
-          title="Discord user id (15-25 digit snowflake)"
-          required
-          className={`${inputCls} w-56`}
-        />
+        <div className="w-56">
+          <MemberPicker name="userId" placeholder="Search members…" />
+        </div>
       )}
       <select name="roleKey" required defaultValue="tier_1" className={selectCls}>
         {STAFF_ROLE_SLUGS.map((r) => (
