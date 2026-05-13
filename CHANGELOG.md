@@ -9,6 +9,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Compose `redis` service now gated behind `profiles: ["primary"]`** to stop the dev clone from spinning up a second `redis` container with the same network alias. Two `redis` containers on the same docker network were round-robin'ing DNS — panel publishes from the dev clone were landing on dev-redis while the bot was psubscribe'd to prod-redis, and every `callBot()` timed out (manifested as "Granted X · Y + ITSRI Staff, but 3 grant(s) failed: ... (timeout)" in the panel UI, plus echo-test timeouts on /sudo/rpc-test). Bring the prod clone up with `COMPOSE_PROFILES=primary docker compose up -d`; dev clone runs without that env and joins the shared prod redis on the botpanel-net network.
+
 - **Staff base-role rename to match Discord: `it_cri_staff` → `itsri_staff`, "IT CRI Staff" → "ITSRI Staff".** Pairs with the matching squishybot commit. Updates the hardcoded role key in `/api/squishy/staff/request`'s sudo short-circuit path and every UI string in `StaffRequestCard.tsx` / `squishyStaffRoles.ts`. Safe rename — Provision & Link hadn't been run yet, so no `bot_settings` rows with the old key exist.
 
 ### Changed
