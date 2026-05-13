@@ -34,7 +34,9 @@ export default async function SquishyVoicePage() {
   //     `canControl` flag the buttons read).
   // This matches the Discord experience — you see the voice channels
   // you'd see in Discord, no more.
-  await resolveAccess(session) // still validate auth resolves cleanly
+  const access = await resolveAccess(session)
+  const viewerId = access.viewing.id
+  const viewerIsPriv = access.botOwner || access.squishy.sudo
 
   return (
     <div className="p-6 sm:p-10 pt-16 md:pt-10">
@@ -45,7 +47,7 @@ export default async function SquishyVoicePage() {
             Channels you&apos;re in, own, or host. Sudo viewers see everything.
           </p>
         </header>
-        <VoiceLive />
+        <VoiceLive viewerId={viewerId} viewerIsPriv={viewerIsPriv} />
       </div>
     </div>
   )

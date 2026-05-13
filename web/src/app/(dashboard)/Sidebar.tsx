@@ -15,9 +15,10 @@
  * 403s when clicked.
  *
  * Mobile (<768px): hamburger button top-left, slide-in drawer with a
- * dimmed backdrop. Desktop (≥768px): always-visible 240px fixed sidebar.
- * The drawer state is intentionally NOT persisted — opening a link on
- * mobile auto-closes via the `onClick` handler.
+ * dimmed backdrop. Desktop (≥768px): always-visible 192px fixed sidebar
+ * (was 240px — narrowed for more main-column width). The drawer state
+ * is intentionally NOT persisted — opening a link on mobile auto-closes
+ * via the `onClick` handler.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -28,6 +29,15 @@ type SessionLike = {
   id: string
   username: string
   avatar?: string | null
+  /**
+   * Discord guild IDs the user is a member of, captured at login. Used
+   * here to hide bot-specific nav for users not in the relevant guild.
+   * `undefined` means the JWT predates this field — we fall back to the
+   * existing capability-derived flags rather than hiding everything,
+   * which would lock out anyone with a stale session until they
+   * re-login.
+   */
+  guildIds?: string[]
 }
 
 type NavLink = { href: string; label: string }
@@ -67,29 +77,71 @@ function GroupHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function Sidebar({ access, session }: { access: AccessMap; session: SessionLike }) {
+export function Sidebar({
+  access,
+  session,
+  squishyGuildId,
+}: {
+  access: AccessMap
+  session: SessionLike
+  /** Squishy's configured guild ID (or null if unset). */
+  squishyGuildId: string | null
+}) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
-  const showSquishy = access.squishy.sudo || access.botOwner
-  const showOtter = Object.keys(access.otter.businesses).length > 0 || access.botOwner
+  // ─── Guild-membership gates ────────────────────────────────────────
+  // `session.guildIds` is undefined on JWTs minted before the field was
+  // added — we treat undefined as "unknown" and skip the gate, falling
+  // back to the prior capability flags. New logins always have the
+  // array (possibly empty if Discord's /guilds endpoint was throttled).
+  // Bot owner always sees both — useful for support / debug.
+  const guildIdsKnown = Array.isArray(session.guildIds)
+  const inSquishyGuild =
+    guildIdsKnown && squishyGuildId !== null
+      ? (session.guildIds ?? []).includes(squishyGuildId)
+      : null // unknown
+  // Otter is multi-guild — no single ID to compare. Use otter-business
+  // membership as a proxy: any non-zero business rank means the user is
+  // in at least one otter-managed guild.
+  const inOtterGuild = Object.keys(access.otter.businesses).length > 0
+  // Final visibility: "in the guild OR bot owner OR unknown-fallback".
+  // Falling back to the existing capability flag means a stale session
+  // never accidentally hides a sudo's tools.
+  // `squishyGuildVisible` is the "is this user in (or transcends) the
+  // Squishy guild?" flag, used for BOTH the top-level Squishy links
+  // and the Squishy nav group. When the gate is "unknown" (legacy JWT
+  // or unconfigured GUILD_ID), we keep the prior behavior so stale
+  // sessions don't suddenly lose access.
+  const squishyGuildVisible =
+    inSquishyGuild === null ? true : inSquishyGuild || access.botOwner
+  const otterGuildVisible = inOtterGuild || access.botOwner
+
+  // The nav group itself still requires sudo (it's all sudo-only
+  // surfaces) — guild membership is an additional gate so a sudo who
+  // somehow isn't in the Squishy guild today doesn't see the group.
+  // Bot owner always passes both clauses.
+  const showSquishy = (access.squishy.sudo || access.botOwner) && squishyGuildVisible
+  const showOtter = (Object.keys(access.otter.businesses).length > 0 || access.botOwner) && otterGuildVisible
   const showMke = access.otter.businesses.mke != null || access.botOwner
   const showSudo = access.squishy.sudo || access.botOwner
 
-  // We render top-level links inline (no heading) and grouped links with a
-  // heading — easier to scan than one mega-list.
-  // `Active Voice` is a top-level link for everyone — the page itself
-  // filters per-viewer (members see channels they're in / own / host;
-  // sudo sees all). The Squishy group below stays sudo-only because the
-  // rest of those surfaces (Settings, Hubs, Games, etc.) are sudo-edit.
-  const topLinks: NavLink[] = [
+  // Top-level links — split into "everyone" and "per-bot" so we can
+  // gate the per-bot ones on guild membership without polluting the
+  // unified array. `Report a bug` stays on the everyone list because
+  // each form inside the page is itself per-bot-gated (see report/page).
+  // `Active Voice` and `My game prefs` are Squishy-specific and only
+  // useful if the user is actually in Squishy's guild.
+  const topLinksAlways: NavLink[] = [
     { href: '/', label: 'Home' },
     { href: '/me', label: 'Dashboard' },
     { href: '/me/edit', label: 'Edit my profile' },
+  ]
+  const topLinksSquishy: NavLink[] = [
     { href: '/me/games', label: 'My game prefs' },
     { href: '/squishy/voice', label: 'Active Voice' },
-    { href: '/report', label: 'Report a bug' },
   ]
+  const topLinksReport: NavLink[] = [{ href: '/report', label: 'Report a bug' }]
   const squishyGroup: NavGroup = {
     heading: 'Squishy',
     links: [
@@ -155,7 +207,30 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
-        {topLinks.map((l) => (
+        {topLinksAlways.map((l) => (
+          <NavItem
+            key={l.href}
+            href={l.href}
+            label={l.label}
+            active={isActive(l.href)}
+            onNavigate={close}
+          />
+        ))}
+        {/* Squishy-specific top-level links — only when the user is in
+            Squishy's guild (or is the bot owner / has a legacy JWT). */}
+        {squishyGuildVisible &&
+          topLinksSquishy.map((l) => (
+            <NavItem
+              key={l.href}
+              href={l.href}
+              label={l.label}
+              active={isActive(l.href)}
+              onNavigate={close}
+            />
+          ))}
+        {/* `Report a bug` always renders — the page itself per-bot-gates
+            each form on guild membership. */}
+        {topLinksReport.map((l) => (
           <NavItem
             key={l.href}
             href={l.href}
@@ -257,8 +332,12 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
         <span aria-hidden>≡</span> Menu
       </button>
 
-      {/* Desktop fixed sidebar. */}
-      <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 border-r border-line bg-bg-card z-20">
+      {/* Desktop fixed sidebar. `w-48` (192px) — narrower than the previous
+          240px so the main column gets more horizontal real estate. The
+          longest label ("Welcome / Goodbye") still fits at 192px without
+          wrapping at our chosen text size. The matching `md:pl-48` lives
+          in DashboardShell.tsx — keep them in lockstep. */}
+      <aside className="hidden md:flex fixed inset-y-0 left-0 w-48 border-r border-line bg-bg-card z-20">
         {Contents}
       </aside>
 

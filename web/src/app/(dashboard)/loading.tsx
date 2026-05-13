@@ -7,7 +7,7 @@
  * route transitions — particularly noticeable on the heavier pages
  * (`/audit`, `/squishy/voice`) where the first paint is gated on a DB read.
  *
- * The skeleton mirrors the dashboard chrome (240px left rail on `md+`,
+ * The skeleton mirrors the dashboard chrome (192px left rail on `md+`,
  * full-bleed main column) so the layout doesn't reflow when the real page
  * finally paints. Per-route `loading.tsx` files can override this with a
  * page-specific skeleton — but a sensible default is enough for MVP.
@@ -23,8 +23,8 @@ function SkeletonLine({ className = '' }: { className?: string }) {
 export default function DashboardLoading() {
   return (
     <div className="min-h-dvh bg-bg animate-pulse" aria-busy="true" aria-live="polite">
-      {/* Left rail placeholder — matches the 240px fixed sidebar. */}
-      <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 border-r border-line bg-bg-card flex-col">
+      {/* Left rail placeholder — matches the 192px fixed sidebar. */}
+      <aside className="hidden md:flex fixed inset-y-0 left-0 w-48 border-r border-line bg-bg-card flex-col">
         <div className="px-4 pt-5 pb-4 border-b border-line flex flex-col gap-2">
           <SkeletonLine className="h-5 w-24" />
           <SkeletonLine className="h-3 w-32" />
@@ -41,7 +41,7 @@ export default function DashboardLoading() {
       </aside>
 
       {/* Main column placeholder. */}
-      <main className="md:pl-60 min-h-dvh">
+      <main className="md:pl-48 min-h-dvh">
         <div className="p-6 flex flex-col gap-4 max-w-5xl">
           <SkeletonLine className="h-7 w-48" />
           <SkeletonLine className="h-4 w-72" />
