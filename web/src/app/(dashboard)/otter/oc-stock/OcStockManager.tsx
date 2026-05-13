@@ -22,6 +22,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { ChannelPicker } from '@/components/pickers/ChannelPicker'
 
 export type OcStockItem = {
   id: string
@@ -38,26 +39,30 @@ type StatusMeta = {
   ringClass: string
   cardClass: string
   label: string
+  chipClass: string
 }
 
 const STATUS_META: Record<OcStockItem['status'], StatusMeta> = {
   in_stock: {
-    emoji: '🟢',
-    ringClass: 'ring-2 ring-emerald-500/60',
+    emoji: '',
+    ringClass: 'ring-1 ring-emerald-500/60',
     cardClass: '',
     label: 'In stock',
+    chipClass: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
   },
   low_stock: {
-    emoji: '🟠',
-    ringClass: 'ring-2 ring-orange-500/60',
+    emoji: '',
+    ringClass: 'ring-1 ring-orange-500/60',
     cardClass: '',
     label: 'Low stock',
+    chipClass: 'border-orange-500/40 bg-orange-500/10 text-orange-200',
   },
   out_of_stock: {
-    emoji: '🔴',
-    ringClass: 'ring-2 ring-red-500/60',
-    cardClass: 'opacity-50',
+    emoji: '',
+    ringClass: 'ring-1 ring-red-500/60',
+    cardClass: 'opacity-60',
     label: 'Out of stock',
+    chipClass: 'border-red-500/40 bg-red-500/10 text-red-200',
   },
 }
 
@@ -94,15 +99,16 @@ function ManageCard({
 
   return (
     <div
-      className={`rounded-2xl bg-bg-card p-4 flex flex-col gap-3 ${meta.ringClass} ${meta.cardClass}`}
+      className={`rounded-2xl bg-bg-card p-4 flex flex-col gap-3 ${meta.ringClass} ${meta.cardClass} transition-all duration-200 hover:bg-bg-card2/60`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-2xl leading-none" aria-label={meta.label} title={meta.label}>
-          {meta.emoji}
-        </div>
-        <div className="text-[10px] uppercase tracking-wider text-ink-dim">
+      <div className="flex items-start justify-end gap-2">
+        <span
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${meta.chipClass}`}
+          aria-label={meta.label}
+          title={meta.label}
+        >
           {meta.label}
-        </div>
+        </span>
       </div>
 
       <div className="font-semibold text-ink break-words">
@@ -282,15 +288,13 @@ function PostToChannelForm() {
       >
         <label className="flex-1 flex flex-col gap-1">
           <span className="text-[10px] uppercase tracking-wider text-ink-dim">
-            Channel ID (snowflake)
+            Channel
           </span>
-          <input
+          <ChannelPicker
             name="channelId"
+            bot="otter"
+            types={['text', 'announcement']}
             required
-            pattern="\d{17,20}"
-            placeholder="1234567890123456789"
-            inputMode="numeric"
-            className="rounded-md border border-line bg-bg-card2 text-ink text-sm px-2 py-1.5 font-mono"
           />
         </label>
         <button

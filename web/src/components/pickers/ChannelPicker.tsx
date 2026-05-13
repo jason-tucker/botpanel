@@ -52,6 +52,7 @@ export function ChannelPicker({
   allowNone,
   required,
   id,
+  bot = 'squishy',
 }: {
   name: string
   value?: string
@@ -61,6 +62,8 @@ export function ChannelPicker({
   allowNone?: boolean
   required?: boolean
   id?: string
+  /** Which bot's guild to pick from. Defaults to 'squishy'. */
+  bot?: 'squishy' | 'otter'
 }) {
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +75,7 @@ export function ChannelPicker({
   useEffect(() => {
     let alive = true
     const qs = typesKey ? `?types=${encodeURIComponent(typesKey)}` : ''
-    fetch(`/api/squishy/meta/channels${qs}`, { credentials: 'same-origin' })
+    fetch(`/api/${bot}/meta/channels${qs}`, { credentials: 'same-origin' })
       .then(r => r.json())
       .then((body: { channels?: Channel[]; error?: string }) => {
         if (!alive) return
@@ -89,7 +92,7 @@ export function ChannelPicker({
         setChannels([])
       })
     return () => { alive = false }
-  }, [typesKey])
+  }, [typesKey, bot])
 
   // Group by parent category. Categories themselves render under "Categories"
   // when included; everything else groups under its parent's name.
