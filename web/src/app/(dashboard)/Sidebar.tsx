@@ -201,7 +201,7 @@ export function Sidebar({
   // them in Discord recognize the panel surface instantly. MKE only
   // appears for users with an MKE rank (staff lookup tooling, not
   // public). Missing slash mirrors (/lookup, /business, /employee,
-  // /printinfo, /artsize, /tcsheet, /movechannel) land in PR 2.
+  // /movechannel) land in PR 2.
   const otterGroup: NavGroup = {
     heading: 'Otter',
     links: [
@@ -209,6 +209,9 @@ export function Sidebar({
       ...(showMke ? [{ href: '/otter/mke', label: '/lookup · MKE' }] : []),
       { href: '/otter/oc-stock', label: '/oc' },
       { href: '/otter/caked', label: '/caked' },
+      { href: '/otter/print-info', label: '/printinfo' },
+      { href: '/otter/art-size', label: '/artsize' },
+      { href: '/otter/tc-sheet', label: '/tcsheet' },
     ],
   }
   // "Admin Home" (/sudo) and "Debug" (/sudo/debug) are rendered only for

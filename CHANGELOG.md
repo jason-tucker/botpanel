@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Three Otter info pages mirroring slash-commands.** `/otter/print-info`, `/otter/art-size`, `/otter/tc-sheet` reproduce the static reference content the bot renders for `/printinfo`, `/artsize`, `/tcsheet`. Same copy (bot source is the spec) — now bookmarkable URLs that don't get lost in Discord scrollback. Linked from the Otter sidebar group with their slash-command labels. No RPC, no API routes; signed-in only.
+
 ### Changed
 - **Sidebar regrouped to mirror the Discord slash-command flow.** Headings now read like slash commands so a user fluent in the bot finds the panel intuitive. New groups: `/settings` (Profile & Birthday · Game Prefs · `/voice`), `Squishy · /sudo` (Settings · Manage User · Hubs — direct map of the `/sudo` select-menu panel), `Squishy · More` (Welcome/Goodbye · Profiles · Games catalog · Automation · Roles · Archives · Audit log — surfaces with no slash equivalent), and `Otter` whose links are labelled by command (`/portal` · `/lookup · MKE` · `/oc` · `/caked`). No pages moved or renamed — only the sidebar IA changed. The remaining `/sudo` buttons that don't have a panel page yet (Game Night, Pending Approvals, Force Cleanup, Run Reconciler) and the missing Otter slash mirrors (`/lookup`, `/business`, `/employee`, `/printinfo`, `/artsize`, `/tcsheet`, `/movechannel`) land in follow-up PRs. Top-level "Edit my profile" / "My game prefs" / "Active Voice" / "Report a bug" links collapsed into the new groups (`Profile & Birthday`, `Game Prefs`, `/voice`, `/report`).
 
