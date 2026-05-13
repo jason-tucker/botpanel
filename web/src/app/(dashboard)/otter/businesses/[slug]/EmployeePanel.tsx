@@ -39,6 +39,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { MemberPicker } from '@/components/pickers/MemberPicker'
 
 type Rank = 'owner' | 'manager' | 'employee'
 
@@ -132,15 +133,9 @@ function HireForm({
     >
       <label className="flex flex-col gap-1 min-w-[14rem]">
         <span className="text-xs uppercase tracking-wider text-ink-dim">
-          Discord user ID
+          Member
         </span>
-        <input
-          name="userId"
-          required
-          pattern="\d{15,25}"
-          placeholder="17–20 digit snowflake"
-          className="rounded-md border border-line bg-bg-card2 px-3 py-1.5 font-mono text-sm"
-        />
+        <MemberPicker name="userId" bot="otter" placeholder="Search members…" />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wider text-ink-dim">Rank</span>
@@ -496,15 +491,9 @@ function ManageByIdBlock({
     >
       <label className="flex flex-col gap-1 min-w-[14rem]">
         <span className="text-xs uppercase tracking-wider text-ink-dim">
-          Discord user ID
+          Member
         </span>
-        <input
-          name="userId"
-          required
-          pattern="\d{15,25}"
-          placeholder="17–20 digit snowflake"
-          className="rounded-md border border-line bg-bg-card2 px-3 py-1.5 font-mono text-sm"
-        />
+        <MemberPicker name="userId" bot="otter" placeholder="Search members…" />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wider text-ink-dim">Action</span>

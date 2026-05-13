@@ -26,6 +26,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { MemberPicker } from '@/components/pickers/MemberPicker'
 import {
   rankColor,
   rankLabel,
@@ -80,14 +81,11 @@ function AddOwnerForm({ slug }: { slug: string }): React.JSX.Element {
       className="flex flex-wrap items-end gap-3"
     >
       <label className="flex flex-col gap-1 text-xs text-ink-dim flex-1 min-w-[14rem]">
-        <span>Discord user ID</span>
-        <input
-          type="text"
+        <span>Member</span>
+        <MemberPicker
           name="discordUserId"
-          required
-          pattern="\d{15,25}"
-          placeholder="e.g. 123456789012345678"
-          className="rounded-lg border border-line bg-bg-card2 px-3 py-2 text-sm text-ink placeholder:text-ink-dim/70 focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+          bot="otter"
+          placeholder="Search members…"
         />
       </label>
       <button
