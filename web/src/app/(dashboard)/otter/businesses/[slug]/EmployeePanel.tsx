@@ -36,6 +36,7 @@
  * owner. Server-side guards (cannot-fire-owner) still cover the
  * race where the count changes between render and submit.
  */
+import Image from 'next/image'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
@@ -97,14 +98,14 @@ function MemberChip({ member }: { member: RosterMember }): React.JSX.Element {
       className="inline-flex items-center gap-1.5 align-middle whitespace-nowrap"
       title={`${member.userId} · @${member.username}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={member.avatarUrl ?? undefined}
+      {/* next/image — Discord CDN allowlisted in next.config.mjs. The outer
+          `showRich` guard already ensures member.avatarUrl is non-null. */}
+      <Image
+        src={member.avatarUrl as string}
         alt=""
         width={24}
         height={24}
         className="h-6 w-6 rounded-full border border-line"
-        loading="lazy"
         referrerPolicy="no-referrer"
       />
       <span className="text-sm text-ink">@{member.displayName}</span>

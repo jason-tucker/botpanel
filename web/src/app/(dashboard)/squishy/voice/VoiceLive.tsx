@@ -22,6 +22,7 @@
  * one via `/api/squishy/users/[id]` and patches the chip in place. Raw
  * snowflake remains the fallback whenever resolution hasn't landed yet.
  */
+import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { VoiceControls } from './VoiceControls'
 
@@ -317,6 +318,17 @@ export function VoiceLive({
 
   // ── SSE subscription ───────────────────────────────────────────────
   useEffect(() => {
+    // Belt-and-braces close of any prior connection before opening a new
+    // one. The cleanup below already calls .close(), but in dev-mode
+    // strict-mode double-invocation and on `router.refresh()` there's a
+    // narrow window where a fresh effect runs before the previous
+    // cleanup fires, accumulating zombie EventSource connections that
+    // keep firing onmessage into a stale closure. Closing on entry is
+    // idempotent (a closed ES is a no-op to close again).
+    if (esRef.current) {
+      esRef.current.close()
+      esRef.current = null
+    }
     const es = new EventSource('/api/squishy/voice/stream')
     esRef.current = es
 
@@ -361,7 +373,7 @@ export function VoiceLive({
     }
 
     return () => {
-      es.close()
+      esRef.current?.close()
       esRef.current = null
     }
   }, [viewerId, viewerIsPriv])
@@ -475,14 +487,12 @@ function UserChipClient({
       className="inline-flex items-center gap-1.5 align-middle whitespace-nowrap"
       title={`${userId} · @${resolved.username}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src={resolved.avatarUrl}
         alt=""
         width={24}
         height={24}
         className="h-6 w-6 rounded-full border border-line"
-        loading="lazy"
         referrerPolicy="no-referrer"
       />
       <span className="text-sm text-ink">@{label}</span>

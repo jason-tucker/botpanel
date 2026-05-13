@@ -26,6 +26,7 @@
  *  - `bot`         — which bot's guild to search ('squishy' default | 'otter').
  *                    Pick determines the API route used for the typeahead.
  */
+import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 
 const inputCls =
@@ -225,7 +226,9 @@ export function MemberPicker({
                 pick(m)
               }}
             >
-              <img
+              {/* next/image — Discord CDN is allowlisted in next.config.mjs.
+                  Lazy by default which is what we want for typeahead dropdowns. */}
+              <Image
                 src={m.avatarUrl}
                 alt=""
                 width={24}
