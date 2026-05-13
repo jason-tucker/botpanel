@@ -22,6 +22,7 @@
  * one via `/api/squishy/users/[id]` and patches the chip in place. Raw
  * snowflake remains the fallback whenever resolution hasn't landed yet.
  */
+import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { VoiceControls } from './VoiceControls'
 
@@ -475,14 +476,12 @@ function UserChipClient({
       className="inline-flex items-center gap-1.5 align-middle whitespace-nowrap"
       title={`${userId} · @${resolved.username}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src={resolved.avatarUrl}
         alt=""
         width={24}
         height={24}
         className="h-6 w-6 rounded-full border border-line"
-        loading="lazy"
         referrerPolicy="no-referrer"
       />
       <span className="text-sm text-ink">@{label}</span>

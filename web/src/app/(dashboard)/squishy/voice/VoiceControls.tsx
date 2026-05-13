@@ -22,6 +22,7 @@
  *    surface the buttons unconditionally and let the server's 403 land
  *    in the form error banner if a host clicks them).
  */
+import Image from 'next/image'
 import { useState } from 'react'
 import { ServerForm } from '@/lib/forms/ServerForm'
 import { MemberPicker } from '@/components/pickers/MemberPicker'
@@ -71,7 +72,7 @@ function MemberInline({
       className="inline-flex items-center gap-1.5 text-xs text-ink truncate"
       title={`${userId} · @${r.username}`}
     >
-      <img
+      <Image
         src={r.avatarUrl}
         alt=""
         width={18}

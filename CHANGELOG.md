@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Performance
+- **Discord avatars now load via `next/image` with the `cdn.discordapp.com` domain allowlisted in `next.config.mjs`.** Avatars get auto-WebP conversion, lazy loading below the fold, and srcset for high-DPI displays. Most impactful on the audit table, members browser, and voice page where 25+ rows render at once. Swapped raw `<img>` for `<Image>` in `UserChip`, `MemberPicker`, `MembersBrowser`, `VoiceLive`, `VoiceControls` (MemberInline), `Sidebar`, `/me` page, and Otter `EmployeePanel`. The user's own avatar in `Sidebar` and `/me` is marked `priority` (above the fold on every authed view).
+
 ### Changed
 - **Voice host promotion/demotion now reflects on the panel instantly.** `/squishy/voice` was ignoring the `voice.hosts_changed` SSE event. The page now handles it locally: mutates `hostUserIds` and recomputes `canControl` for the viewer using their session-side `viewerId` + `viewerIsPriv` flags (threaded from the server-rendered page). A user who just got promoted to host sees the Controls button appear without refreshing; a just-demoted host sees it disappear.
 

@@ -9,6 +9,7 @@
  * Layout: provided by the `(dashboard)` route-group layout — `<main>` and
  * the sidebar are already in scope. We just render content inside a `<div>`.
  */
+import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
@@ -74,10 +75,14 @@ export default async function MePage() {
 
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex items-center gap-4">
           {avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            // priority — this is the user's own avatar at the top of /me, above
+            // the fold on every load. Worth the eager fetch to avoid a flash.
+            <Image
               src={avatar}
               alt=""
+              width={64}
+              height={64}
+              priority
               className="w-16 h-16 rounded-full border border-line"
             />
           ) : (
