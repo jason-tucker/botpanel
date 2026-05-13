@@ -542,7 +542,18 @@ export default async function MemberDrillPage({
     auditUserIds.push(r.actorUserId)
     if (r.viewingUserId) auditUserIds.push(r.viewingUserId)
   }
-  const auditUserMap = await resolveUsernames('squishy', auditUserIds)
+  const auditUserRaw = await resolveUsernames('squishy', auditUserIds)
+  // <AuditTable> expects Map<string, {id, username?, avatar?}> — the
+  // shape returned by `resolveUsernames` is {username, displayName, avatarUrl}.
+  // Adapt: id from the map key, prefer displayName, avatarUrl → avatar.
+  const auditUserMap = new Map<string, { id: string; username?: string | null; avatar?: string | null }>()
+  for (const [uid, ru] of auditUserRaw) {
+    auditUserMap.set(uid, {
+      id: uid,
+      username: ru.displayName ?? ru.username,
+      avatar: ru.avatarUrl ?? null,
+    })
+  }
 
   const headerName =
     targetUser?.displayName
