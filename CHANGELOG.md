@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Performance
+- **`/squishy/members/[id]` audit username resolution now runs in the same parallel batch as the 8-way data load.** The `resolveUsernames('squishy', auditUserIds)` call was a separate `await` after the Promise.all — on a cold cache that serialized a 5-20s `users.resolve` RPC behind every other section's DB query. Chained via `.then()` inside the Promise.all so the rest of the page loads in parallel with the bot round-trip.
+- **SSE leak in `<VoiceLive>` and `<AuditLive>` closed.** Both components now close the prior EventSource on effect-entry (in addition to the cleanup return) via a shared `esRef`. Dev-mode strict-mode double-invocation and `router.refresh()` could schedule a fresh effect before the previous cleanup ran, leaving zombie connections that kept firing onmessage into stale closures.
+- **`/me/games` catalog + user-prefs queries run in parallel and filter in SQL.** Were sequential awaits with a `SELECT *` then a JS-side `!isArchived && isVisible` filter. Now a single `Promise.all` with the visible/non-archived check pushed into the WHERE clause — fewer rows over the wire, no head-of-line blocking.
+
 ### Changed
 - **Voice host promotion/demotion now reflects on the panel instantly.** `/squishy/voice` was ignoring the `voice.hosts_changed` SSE event. The page now handles it locally: mutates `hostUserIds` and recomputes `canControl` for the viewer using their session-side `viewerId` + `viewerIsPriv` flags (threaded from the server-rendered page). A user who just got promoted to host sees the Controls button appear without refreshing; a just-demoted host sees it disappear.
 
