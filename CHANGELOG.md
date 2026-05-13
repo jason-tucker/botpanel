@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Edit `/caked` and `/oc` card text from the panel.** Caked managers/owners can now edit the Contact / Event / Pricing card bodies that `/caked` shows; OC managers/owners can edit the Requirements card from `/oc`. Both pages got a new "Edit message content" section above the existing post-to-channel form. Saves go through new `business_messages.update` / `.reset` RPC verbs which enforce manager+ rank server-side and audit every change.
+
 ### Fixed
 
 - **Otter perms resolution moved off broken SQL to `business.user_ranks` RPC.** `loadOtterBusinesses` was running `where m.user_id = $1` against `business_role_mappings` — but that table has no `user_id` column (it maps role-id-to-rank; user membership lives as Discord roles). Every panel page render was spamming `column m.user_id does not exist` and `column o.user_id does not exist` (also wrong on `business_owners`, which uses `discord_user_id`). Replaced both with a single call to the new otterbot `business.user_ranks({userId})` verb which walks the guild member cache + role mappings + owner table and returns `{slug: rank}`. 60s in-process cache per userId so common page loads don't round-trip the bot. Empty result on bot-down doesn't cache, so the user recovers when the bot comes back up.
