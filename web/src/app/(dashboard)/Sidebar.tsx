@@ -210,6 +210,7 @@ export function Sidebar({
       ...(showMke ? [{ href: '/otter/mke', label: '/lookup · MKE' }] : []),
       { href: '/otter/oc-stock', label: '/oc' },
       { href: '/otter/caked', label: '/caked' },
+      { href: '/otter/move-channel', label: '/movechannel' },
     ],
   }
   // "Admin Home" (/sudo) and "Debug" (/sudo/debug) are rendered only for
