@@ -86,7 +86,9 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
     { href: '/', label: 'Home' },
     { href: '/me', label: 'Dashboard' },
     { href: '/me/edit', label: 'Edit my profile' },
+    { href: '/me/games', label: 'My game prefs' },
     { href: '/squishy/voice', label: 'Active Voice' },
+    { href: '/report', label: 'Report a bug' },
   ]
   const squishyGroup: NavGroup = {
     heading: 'Squishy',
