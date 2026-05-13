@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **`/squishy/voice` is now visible to all logged-in users, filtered per-viewer.** Was sudo-only; now any logged-in user sees the channels they have a real relationship with (currently in / own / host / acting-owner). Sudo / bot-owner still see everything. The per-channel "Controls" popover stays gated on owner/host/acting-owner/sudo (matches Discord — you can't rename someone else's room). The SSE event stream applies the same filter live: a member joining a channel extends their visibility on the next event; leaving contracts it. Sidebar gets a top-level "Active Voice" link visible to everyone (above the sudo-gated Squishy group).
+
 - **Edit `/caked` and `/oc` card text from the panel.** Caked managers/owners can now edit the Contact / Event / Pricing card bodies that `/caked` shows; OC managers/owners can edit the Requirements card from `/oc`. Both pages got a new "Edit message content" section above the existing post-to-channel form. Saves go through new `business_messages.update` / `.reset` RPC verbs which enforce manager+ rank server-side and audit every change.
 
 ### Fixed

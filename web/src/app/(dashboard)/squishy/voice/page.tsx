@@ -27,35 +27,23 @@ export default async function SquishyVoicePage() {
   const session = await getSession()
   if (!session) redirect('/')
 
-  const access = await resolveAccess(session)
-  const allowed = access.squishy.sudo || access.botOwner
-
-  if (!allowed) {
-    return (
-      <div className="p-6 sm:p-10 pt-16 md:pt-10">
-        <div className="max-w-2xl mx-auto flex flex-col gap-6">
-          <header>
-            <h1 className="text-2xl font-semibold">Active Voice Channels</h1>
-          </header>
-          <section className="rounded-2xl border border-line bg-bg-card p-6">
-            <div className="text-xs uppercase tracking-wider text-ink-dim mb-2">
-              No access
-            </div>
-            <p className="text-ink">
-              You don&apos;t have permission to view live voice channels. This
-              page is restricted to Squishy sudo users and the bot owner.
-            </p>
-          </section>
-        </div>
-      </div>
-    )
-  }
+  // Everyone in. The snapshot route + SSE both filter per-viewer:
+  //   - sudo / bot-owner: see ALL channels
+  //   - everyone else: see only channels they're a member of, own, host,
+  //     or are acting-owner on (same gate that powers the per-row
+  //     `canControl` flag the buttons read).
+  // This matches the Discord experience — you see the voice channels
+  // you'd see in Discord, no more.
+  await resolveAccess(session) // still validate auth resolves cleanly
 
   return (
     <div className="p-6 sm:p-10 pt-16 md:pt-10">
       <div className="max-w-4xl mx-auto flex flex-col gap-6">
         <header>
           <h1 className="text-2xl font-semibold">Active Voice Channels</h1>
+          <p className="text-sm text-ink-dim mt-1">
+            Channels you&apos;re in, own, or host. Sudo viewers see everything.
+          </p>
         </header>
         <VoiceLive />
       </div>
