@@ -513,6 +513,7 @@ function ChannelCard({
               locked={channel.locked}
               hidden={channel.hidden}
               onMutated={onMutated}
+              resolved={resolved}
             />
           )}
         </div>

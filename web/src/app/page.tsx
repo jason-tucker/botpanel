@@ -108,13 +108,20 @@ function buildBotStatuses(raw: Record<string, Record<string, unknown>>): BotStat
 }
 
 function BotStatusCard({ bot }: { bot: BotStatus }) {
-  const dot = bot.online ? '🟢' : '🔴'
-  const ring = bot.online ? 'border-line' : 'border-red-900/60'
+  const ring = bot.online
+    ? 'border-emerald-500/40 ring-1 ring-emerald-500/30'
+    : 'border-red-500/40 ring-1 ring-red-500/30'
+  const dot = bot.online ? 'bg-emerald-400' : 'bg-red-400'
   return (
-    <div className={`rounded-xl border ${ring} bg-bg-card2 p-4 flex flex-col gap-2`}>
+    <div
+      className={`rounded-xl border ${ring} bg-bg-card2 p-4 flex flex-col gap-2 transition-all duration-200`}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span aria-hidden className="text-base leading-none">{dot}</span>
+          <span
+            aria-label={bot.online ? 'online' : 'offline'}
+            className={`inline-block w-2.5 h-2.5 rounded-full ${dot}`}
+          />
           <span className="font-medium text-ink">{bot.label}</span>
         </div>
         {bot.version && (
