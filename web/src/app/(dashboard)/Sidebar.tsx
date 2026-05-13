@@ -175,8 +175,10 @@ export function Sidebar({
       { href: '/squishy/settings', label: 'Settings' },
       { href: '/squishy/members', label: 'Manage User' },
       { href: '/squishy/hubs', label: 'Hubs' },
-      // Game Night / Force cleanup / Pending approvals / Run reconciler
-      // are PR 2 additions — see CHANGELOG.
+      { href: '/squishy/approvals', label: 'Pending Approvals' },
+      { href: '/squishy/cleanup', label: 'Force Cleanup' },
+      { href: '/squishy/reconciler', label: 'Run Reconciler' },
+      // Game Night still pending (PR 2g) — see CHANGELOG.
     ],
   }
   // "Squishy · More" — surfaces with no direct slash-command equivalent
