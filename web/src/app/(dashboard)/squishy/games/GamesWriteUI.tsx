@@ -9,17 +9,20 @@
  *                                 /api/squishy/games. Includes optional
  *                                 channelId / view roleId / pingRoleId /
  *                                 playCooldownSeconds / autoArchiveDays.
+ *                                 When the "Auto-provision channel + view
+ *                                 role + ping role" checkbox is checked,
+ *                                 the form POSTs to
+ *                                 /api/squishy/games/provision instead and
+ *                                 the bot atomically creates all three
+ *                                 Discord resources plus the games row.
  *   - `<EditGameForm />`        — collapsible inline editor on each row.
- *                                 PATCHes /api/squishy/games/[id].
+ *                                 PATCHes /api/squishy/games/[id]. Each
+ *                                 unset link field grows an inline
+ *                                 "+ Create" button that drives the new
+ *                                 /api/squishy/discord/create-{role,channel}
+ *                                 routes — on success it PATCHes the games
+ *                                 row in-place and refreshes the page.
  *   - `<RemoveGameButton />`    — flip-to-confirm (two-stage) DELETE.
- *                                 First click swaps the label to "Confirm
- *                                 remove" with a Cancel; second click
- *                                 actually submits. A 4s timeout reverts
- *                                 to the default state so a stray click
- *                                 can't be revisited as a delete an hour
- *                                 later. Matches the spec's "flip-to-
- *                                 confirm" requirement (rather than the
- *                                 RolesWriteUI window.confirm pattern).
  *
  * All write surfaces go through `<ServerForm>` — see RolesWriteUI for the
  * full rundown of what that wrapper does (CSRF, JSON body, fieldset
@@ -27,6 +30,10 @@
  * `router.refresh()` so the server page re-runs its DB read and renders
  * the updated table; the bot-side cache refresh is handled API-side, so
  * we don't have to wait on it client-side.
+ *
+ * The new "+ Create" flow does its own CSRF dance via `requestJson()`
+ * (a small fetch helper) rather than nesting forms — `<button>` inside
+ * `<form>` would otherwise submit the outer form on click.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -43,11 +50,197 @@ const btnDanger =
   'inline-flex items-center px-2 py-1 text-xs rounded-md border border-err/40 bg-err/10 text-err hover:bg-err/20 transition-colors'
 const btnGhost =
   'text-[11px] text-ink-dim hover:text-ink underline-offset-2 hover:underline'
+const btnCreateInline =
+  'inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-md border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50'
 
-/** Shared field set rendered by both Add and Edit forms. */
+// ---------------------------------------------------------------------------
+// CSRF-aware fetch helper used by the inline "+ Create" buttons.
+//
+// `<ServerForm>` already encapsulates CSRF + JSON for the outer form posts;
+// the inline buttons can't use that wrapper (they'd nest forms), so we
+// reimplement the minimum here: lazy-fetch the CSRF token, POST JSON, parse
+// the response, surface a simple {ok, data, error} shape. On 403 csrf we
+// retry once with a fresh token — same recovery the wrapper does.
+// ---------------------------------------------------------------------------
+
+let cachedCsrfToken: string | null = null
+async function getCsrfToken(): Promise<string | null> {
+  if (cachedCsrfToken) return cachedCsrfToken
+  try {
+    const res = await fetch('/api/csrf', { credentials: 'same-origin' })
+    if (!res.ok) return null
+    const body = (await res.json()) as { token?: unknown }
+    if (typeof body.token === 'string') {
+      cachedCsrfToken = body.token
+      return cachedCsrfToken
+    }
+  } catch {
+    // fall through — caller renders the error
+  }
+  return null
+}
+
+async function requestJson<T = unknown>(
+  url: string,
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body: unknown,
+): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  const doFetch = async (token: string | null): Promise<Response> => {
+    const headers: Record<string, string> = { 'content-type': 'application/json' }
+    if (token) headers['x-csrf-token'] = token
+    return fetch(url, {
+      method,
+      headers,
+      credentials: 'same-origin',
+      body: JSON.stringify(body ?? {}),
+    })
+  }
+  let token = await getCsrfToken()
+  let res = await doFetch(token)
+  if (res.status === 403) {
+    // CSRF retry once with a freshly-fetched token.
+    cachedCsrfToken = null
+    token = await getCsrfToken()
+    res = await doFetch(token)
+  }
+  let parsed: unknown = null
+  try {
+    parsed = await res.json()
+  } catch {
+    parsed = null
+  }
+  if (res.ok) {
+    return { ok: true, data: (parsed as { data?: T })?.data ?? (parsed as T) }
+  }
+  const err =
+    (parsed && typeof parsed === 'object' && typeof (parsed as { error?: unknown }).error === 'string'
+      ? (parsed as { error: string }).error
+      : null) ?? `Request failed (${res.status})`
+  return { ok: false, error: err }
+}
+
+// ---------------------------------------------------------------------------
+// "+ Create" inline action for unset role/channel links in the edit form.
+//
+// Shown only when the linked entity is missing (the parent decides this by
+// checking whether the games row's column is null). The button prompts via
+// the native `window.prompt()` for the new name (with a sensible default
+// derived from the game's name), hits the panel `discord.create_{role,channel}`
+// route, and on success PATCHes the games row to wire the returned id into
+// the appropriate column, then `router.refresh()` so the page re-renders
+// with the link populated.
+// ---------------------------------------------------------------------------
+
+type InlineCreateProps = {
+  /** Game row id — needed for the follow-up PATCH that wires the new id in. */
+  gameId: string
+  /** "channel" → create-channel; "role" → create-role. */
+  kind: 'channel' | 'role'
+  /** Pre-filled prompt default + audit breadcrumb. */
+  defaultName: string
+  /** Which column on the games row this fills (`channelId` | `roleId` | `pingRoleId`). */
+  patchField: 'channelId' | 'roleId' | 'pingRoleId'
+  /** Parent category id for channels — only used when kind==='channel'. */
+  parentId?: string | null
+  /** UI label for the button — "+ Create channel" etc. */
+  label: string
+}
+
+function InlineCreateButton({
+  gameId,
+  kind,
+  defaultName,
+  patchField,
+  parentId,
+  label,
+}: InlineCreateProps) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        disabled={busy}
+        className={btnCreateInline}
+        onClick={async () => {
+          if (busy) return
+          setError(null)
+          const promptLabel =
+            kind === 'channel' ? 'New channel name:' : 'New role name:'
+          const proposed = window.prompt(promptLabel, defaultName)
+          if (proposed === null) return
+          const name = proposed.trim()
+          if (name.length === 0) {
+            setError('Name cannot be empty.')
+            return
+          }
+          setBusy(true)
+          try {
+            // 1) create the Discord resource via the new panel route.
+            const createUrl =
+              kind === 'channel'
+                ? '/api/squishy/discord/create-channel'
+                : '/api/squishy/discord/create-role'
+            const createBody =
+              kind === 'channel'
+                ? { name, type: 'text', parentId: parentId ?? undefined }
+                : { name }
+            const created = await requestJson<{ id?: string }>(
+              createUrl,
+              'POST',
+              createBody,
+            )
+            if (!created.ok) {
+              setError(created.error)
+              return
+            }
+            const newId = created.data?.id
+            if (!newId || typeof newId !== 'string') {
+              setError('Bot reply missing id — refresh and try again.')
+              return
+            }
+            // 2) wire the id into the games row via the existing PATCH route.
+            const patched = await requestJson(
+              `/api/squishy/games/${gameId}`,
+              'PATCH',
+              { [patchField]: newId },
+            )
+            if (!patched.ok) {
+              setError(`Discord ${kind} created, but linking it to the game failed: ${patched.error}`)
+              return
+            }
+            // 3) refresh the server page so the row re-renders with the new link.
+            router.refresh()
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Network error')
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        {busy ? 'Creating…' : label}
+      </button>
+      {error && (
+        <p className="text-[11px] text-err">{error}</p>
+      )}
+    </div>
+  )
+}
+
+/** Shared field set rendered by both Add (manual mode) and Edit forms. */
 function GameFields({
   idPrefix,
   defaults,
+  /**
+   * Render the "+ Create" inline buttons next to each link picker when its
+   * current value is empty (or, in Edit mode, when the linked entity is
+   * known to be missing). Only used by `<EditGameForm>` — the Add form
+   * builds new rows so there's nothing to fix yet.
+   */
+  inlineCreate,
+  gameName,
+  gamesCategoryId,
 }: {
   idPrefix: string
   defaults?: {
@@ -58,6 +251,11 @@ function GameFields({
     playCooldownSeconds?: number | null
     autoArchiveDays?: number | null
   }
+  inlineCreate?: {
+    gameId: string
+  }
+  gameName?: string
+  gamesCategoryId?: string | null
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -87,6 +285,16 @@ function GameFields({
           defaultValue={defaults?.channelId ?? ''}
           allowNone
         />
+        {inlineCreate && !defaults?.channelId && (
+          <InlineCreateButton
+            gameId={inlineCreate.gameId}
+            kind="channel"
+            defaultName={`🎮-${(gameName ?? defaults?.name ?? 'game').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`}
+            patchField="channelId"
+            parentId={gamesCategoryId ?? null}
+            label="+ Create channel"
+          />
+        )}
       </div>
       <div className="flex flex-col gap-1">
         <label className={labelCls} htmlFor={`${idPrefix}-roleId`}>
@@ -98,6 +306,15 @@ function GameFields({
           defaultValue={defaults?.roleId ?? ''}
           allowNone
         />
+        {inlineCreate && !defaults?.roleId && (
+          <InlineCreateButton
+            gameId={inlineCreate.gameId}
+            kind="role"
+            defaultName={gameName ?? defaults?.name ?? 'Game'}
+            patchField="roleId"
+            label="+ Create view role"
+          />
+        )}
       </div>
       <div className="flex flex-col gap-1">
         <label className={labelCls} htmlFor={`${idPrefix}-pingRoleId`}>
@@ -109,6 +326,15 @@ function GameFields({
           defaultValue={defaults?.pingRoleId ?? ''}
           allowNone
         />
+        {inlineCreate && !defaults?.pingRoleId && (
+          <InlineCreateButton
+            gameId={inlineCreate.gameId}
+            kind="role"
+            defaultName={`${gameName ?? defaults?.name ?? 'Game'} LFG`}
+            patchField="pingRoleId"
+            label="+ Create ping role"
+          />
+        )}
       </div>
       <div className="flex flex-col gap-1">
         <label className={labelCls} htmlFor={`${idPrefix}-playCooldownSeconds`}>
@@ -144,33 +370,146 @@ function GameFields({
   )
 }
 
-export function AddGameForm() {
+/**
+ * "Add game" form. Has two modes:
+ *
+ *   - **Manual** (default): renders the full set of optional pickers + ints
+ *     and POSTs to /api/squishy/games. Same behaviour as before this change.
+ *   - **Auto-provision** (checkbox on): hides the channel + role + cooldown
+ *     pickers, leaves only the name + cooldown + auto-archive inputs, and
+ *     POSTs to /api/squishy/games/provision instead. The bot creates the
+ *     text channel + view role + ping role + games row atomically.
+ *
+ * The mode is local React state — the form doesn't try to remember it
+ * across page reloads; sudo flips the box on the rare "creating a brand
+ * new game from scratch" path, leaves it off for piggyback-on-existing-
+ * channel games (which is most of them).
+ */
+export function AddGameForm({
+  gamesCategoryId,
+}: {
+  gamesCategoryId?: string | null
+} = {}) {
   const router = useRouter()
+  const [autoProvision, setAutoProvision] = useState(false)
+  // The two modes hit different routes; ServerForm reads `action` at render
+  // time only (we pass it inline below), so we render two distinct forms
+  // and only show one at a time. Keeps the action wiring simple.
   return (
     <div className="rounded-xl border border-line bg-bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium">Add game</h3>
         <span className="text-[11px] text-ink-dim">sudo · audit-logged</span>
       </div>
-      <ServerForm
-        action="/api/squishy/games"
-        method="POST"
-        onSuccess={() => router.refresh()}
-        className="flex flex-col gap-3"
-      >
-        <input type="hidden" name="_format" value="json" />
-        <GameFields idPrefix="add-game" />
-        <p className="text-[11px] text-ink-dim">
-          Only <strong>name</strong> is required. The bot reads the games table
-          live, and we ping its cache-refresh hook after the insert so /play
-          and /games pick this row up immediately.
-        </p>
-        <div>
-          <button type="submit" className={btnPrimary}>
-            Add game
-          </button>
-        </div>
-      </ServerForm>
+      <label className="flex items-start gap-2 mb-3 text-sm">
+        <input
+          type="checkbox"
+          checked={autoProvision}
+          onChange={(e) => setAutoProvision(e.target.checked)}
+          className="mt-1"
+        />
+        <span className="flex flex-col">
+          <span>Auto-provision channel + view role + ping role in #games category</span>
+          <span className="text-[11px] text-ink-dim">
+            Creates a fresh Discord channel (named <code className="font-mono text-xs">🎮-{'{name-slug}'}</code>, position 3 in the games category), a view role, and a ping role, then inserts the games row wired to all three. Leave unchecked for games that piggyback on an existing channel.
+            {gamesCategoryId == null && (
+              <>
+                {' '}
+                <span className="text-warn">
+                  No games category set —{' '}
+                  <code className="font-mono text-[10px]">channel.games_category</code>
+                  {' '}is unset in bot_settings, so the new channel will be top-level.
+                </span>
+              </>
+            )}
+          </span>
+        </span>
+      </label>
+
+      {autoProvision ? (
+        <ServerForm
+          action="/api/squishy/games/provision"
+          method="POST"
+          onSuccess={() => router.refresh()}
+          className="flex flex-col gap-3"
+        >
+          <input type="hidden" name="_format" value="json" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1 md:col-span-2">
+              <label className={labelCls} htmlFor="add-game-prov-name">
+                Name
+              </label>
+              <input
+                id="add-game-prov-name"
+                name="name"
+                type="text"
+                required
+                maxLength={100}
+                placeholder="e.g. Cyberpunk"
+                className={inputCls}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelCls} htmlFor="add-game-prov-cooldown">
+                /play cooldown (seconds, optional)
+              </label>
+              <input
+                id="add-game-prov-cooldown"
+                name="playCooldownSeconds"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="1800"
+                className={inputCls}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelCls} htmlFor="add-game-prov-archive">
+                Auto-archive (days, optional)
+              </label>
+              <input
+                id="add-game-prov-archive"
+                name="autoArchiveDays"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="0 = off"
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-ink-dim">
+            On submit, the bot creates the Discord channel, view role, and ping
+            role, then inserts the games row wired to all three IDs. Partial
+            failures roll back what's already been created.
+          </p>
+          <div>
+            <button type="submit" className={btnPrimary}>
+              Auto-provision game
+            </button>
+          </div>
+        </ServerForm>
+      ) : (
+        <ServerForm
+          action="/api/squishy/games"
+          method="POST"
+          onSuccess={() => router.refresh()}
+          className="flex flex-col gap-3"
+        >
+          <input type="hidden" name="_format" value="json" />
+          <GameFields idPrefix="add-game" />
+          <p className="text-[11px] text-ink-dim">
+            Only <strong>name</strong> is required. The bot reads the games
+            table live, and we ping its cache-refresh hook after the insert so
+            /play and /games pick this row up immediately.
+          </p>
+          <div>
+            <button type="submit" className={btnPrimary}>
+              Add game
+            </button>
+          </div>
+        </ServerForm>
+      )}
     </div>
   )
 }
@@ -183,6 +522,7 @@ export function EditGameForm({
   pingRoleId,
   playCooldownSeconds,
   autoArchiveDays,
+  gamesCategoryId,
 }: {
   id: string
   name: string
@@ -191,6 +531,7 @@ export function EditGameForm({
   pingRoleId: string | null
   playCooldownSeconds: number | null
   autoArchiveDays: number | null
+  gamesCategoryId?: string | null
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -227,10 +568,14 @@ export function EditGameForm({
             playCooldownSeconds,
             autoArchiveDays,
           }}
+          inlineCreate={{ gameId: id }}
+          gameName={name}
+          gamesCategoryId={gamesCategoryId}
         />
         <p className="text-[11px] text-ink-dim">
-          Pick "— None —" or clear a number field to unset it. Saving fires
-          the bot cache-refresh hook.
+          Pick &quot;— None —&quot; or clear a number field to unset it. The &quot;+ Create&quot;
+          buttons next to an empty link create a fresh Discord resource and
+          link it in one shot. Saving fires the bot cache-refresh hook.
         </p>
         <div className="flex items-center gap-2">
           <button type="submit" className={btnPrimary}>

@@ -23,12 +23,12 @@
  */
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { asc, sql } from 'drizzle-orm'
+import { asc, eq, sql } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { env } from '@/lib/env'
 import { squishyDb } from '@/lib/db/squishy'
-import { games, userGamePrefs } from '@/lib/db/schema/squishy'
+import { botSettings, games, userGamePrefs } from '@/lib/db/schema/squishy'
 import { discordChannelUrl, formatDuration, relTime } from '@/lib/util/format'
 import { AddGameForm, EditGameForm, RemoveGameButton } from './GamesWriteUI'
 
@@ -105,6 +105,29 @@ function Mono({ value }: { value: string | null }) {
   return <span className="font-mono text-xs">{value}</span>
 }
 
+/**
+ * Read the games-category id from `bot_settings.channel.games_category`.
+ * Drives the "+ Create" inline buttons on the edit form (so a freshly-
+ * created channel lands in the same parent the bot's auto-provision flow
+ * uses) and the Add-Game "Auto-provision" checkbox path. Returns null
+ * when unset — the panel still works, the new channel just goes to the
+ * top level until sudo wires `channel.games_category` via /sudo settings.
+ */
+async function loadGamesCategoryId(): Promise<string | null> {
+  try {
+    const rows = await squishyDb
+      .select()
+      .from(botSettings)
+      .where(eq(botSettings.key, 'channel.games_category'))
+    if (rows.length === 0) return null
+    const v = rows[0].value?.trim()
+    return v && v.length > 0 ? v : null
+  } catch (err) {
+    console.warn('[squishy/games] games-category lookup failed', err)
+    return null
+  }
+}
+
 export default async function SquishyGamesPage() {
   const session = await getSession()
   if (!session) redirect('/api/auth/login')
@@ -130,7 +153,10 @@ export default async function SquishyGamesPage() {
     )
   }
 
-  const list = await loadGames()
+  const [list, gamesCategoryId] = await Promise.all([
+    loadGames(),
+    loadGamesCategoryId(),
+  ])
   const guildId = env.GUILD_ID ?? null
 
   return (
@@ -150,7 +176,7 @@ export default async function SquishyGamesPage() {
           </Link>
         </header>
 
-        <AddGameForm />
+        <AddGameForm gamesCategoryId={gamesCategoryId} />
 
         {list === null ? (
           <div className="rounded-xl border border-line bg-bg-card p-6 text-sm text-err">
@@ -220,6 +246,7 @@ export default async function SquishyGamesPage() {
                             pingRoleId={g.pingRoleId}
                             playCooldownSeconds={g.playCooldownSeconds}
                             autoArchiveDays={g.autoArchiveDays}
+                            gamesCategoryId={gamesCategoryId}
                           />
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
