@@ -18,7 +18,7 @@
  * persisted (including the cascade-off-when-view-disabled effect from
  * `setPref`).
  */
-import { useState, type ChangeEvent } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
 
@@ -32,8 +32,12 @@ export type GameRow = {
 
 type LocalState = Map<string, { view: boolean; ping: boolean }>
 
-const btnPrimary =
-  'inline-flex items-center px-3 py-1.5 text-sm rounded-lg border border-line bg-bg-card2 text-ink hover:bg-bg-card2/70 transition-colors'
+// Green/success primary CTA. Tailwind's `ok` token isn't defined as a bg
+// class everywhere in the codebase, so we use the standard emerald palette
+// to stay self-contained and avoid theme-drift. Used for BOTH the top and
+// bottom Save buttons so they read as the same canonical action.
+const btnSavePrimary =
+  'inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg border border-emerald-500/60 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors shadow-sm'
 
 export function MyGamesEditor({ rows }: { rows: GameRow[] }) {
   const router = useRouter()
@@ -42,6 +46,18 @@ export function MyGamesEditor({ rows }: { rows: GameRow[] }) {
     for (const r of rows) m.set(r.gameId, { view: r.view, ping: r.ping })
     return m
   })
+  // `router.refresh()` after Save re-renders the server component with
+  // fresh `rows` props, but `useState`'s initializer only runs once on
+  // mount — without this effect the table would still show the pre-save
+  // state until a hard reload. Re-sync whenever the parent hands us a
+  // new rows snapshot (cheap: ~dozens of rows max).
+  useEffect(() => {
+    setLocal(() => {
+      const m: LocalState = new Map()
+      for (const r of rows) m.set(r.gameId, { view: r.view, ping: r.ping })
+      return m
+    })
+  }, [rows])
 
   function setView(gameId: string, value: boolean) {
     setLocal((prev) => {
@@ -89,6 +105,19 @@ export function MyGamesEditor({ rows }: { rows: GameRow[] }) {
       {/* The whole batch travels as one JSON-encoded field — the route
           handler parses it back into a typed array. */}
       <input type="hidden" name="prefs" value={prefsPayload} />
+
+      {/* Top Save — same submit as the bottom one. Visually distinct
+          (green) so a user editing a long list doesn't have to scroll
+          back down to confirm. The fieldset[disabled] in ServerForm
+          covers BOTH buttons during submit. */}
+      <div className="flex items-center justify-between gap-3">
+        <button type="submit" className={btnSavePrimary}>
+          Save game prefs
+        </button>
+        <span className="text-[11px] text-ink-dim text-right">
+          Changes apply on Discord immediately.
+        </span>
+      </div>
 
       <div className="rounded-xl border border-line bg-bg-card overflow-hidden">
         <div className="overflow-x-auto">
@@ -144,7 +173,7 @@ export function MyGamesEditor({ rows }: { rows: GameRow[] }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <button type="submit" className={btnPrimary}>
+        <button type="submit" className={btnSavePrimary}>
           Save game prefs
         </button>
         <span className="text-[11px] text-ink-dim">
