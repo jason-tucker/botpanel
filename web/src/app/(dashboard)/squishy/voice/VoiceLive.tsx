@@ -317,6 +317,17 @@ export function VoiceLive({
 
   // ── SSE subscription ───────────────────────────────────────────────
   useEffect(() => {
+    // Belt-and-braces close of any prior connection before opening a new
+    // one. The cleanup below already calls .close(), but in dev-mode
+    // strict-mode double-invocation and on `router.refresh()` there's a
+    // narrow window where a fresh effect runs before the previous
+    // cleanup fires, accumulating zombie EventSource connections that
+    // keep firing onmessage into a stale closure. Closing on entry is
+    // idempotent (a closed ES is a no-op to close again).
+    if (esRef.current) {
+      esRef.current.close()
+      esRef.current = null
+    }
     const es = new EventSource('/api/squishy/voice/stream')
     esRef.current = es
 
@@ -361,7 +372,7 @@ export function VoiceLive({
     }
 
     return () => {
-      es.close()
+      esRef.current?.close()
       esRef.current = null
     }
   }, [viewerId, viewerIsPriv])

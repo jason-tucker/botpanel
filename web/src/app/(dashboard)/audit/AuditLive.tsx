@@ -155,6 +155,7 @@ export function AuditLive() {
   // IDs we should briefly pulse — populated when an SSE event arrives.
   const [recentIds, setRecentIds] = useState<Set<string>>(new Set())
   const seenIds = useRef<Set<string>>(new Set())
+  const esRef = useRef<EventSource | null>(null)
 
   // Initial snapshot.
   useEffect(() => {
@@ -183,7 +184,17 @@ export function AuditLive() {
 
   // SSE live tail.
   useEffect(() => {
+    // Close any prior connection before opening a new one. Dev-mode
+    // strict-mode double-invocation and `router.refresh()` can both
+    // schedule a fresh effect before the previous cleanup runs,
+    // leaving zombie EventSource connections that keep dispatching
+    // onmessage into stale closures. Closing on entry is idempotent.
+    if (esRef.current) {
+      esRef.current.close()
+      esRef.current = null
+    }
     const es = new EventSource('/api/audit/stream', { withCredentials: true })
+    esRef.current = es
 
     es.onopen = () => setConn('live')
     es.onerror = () => {
@@ -226,7 +237,8 @@ export function AuditLive() {
     }
 
     return () => {
-      es.close()
+      esRef.current?.close()
+      esRef.current = null
     }
   }, [])
 
