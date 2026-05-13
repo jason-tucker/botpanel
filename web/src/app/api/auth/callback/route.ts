@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { exchangeCode, fetchMe } from '@/lib/auth/discord'
+import { exchangeCode, fetchMe, fetchGuildIds } from '@/lib/auth/discord'
 import { mintSession, setSessionCookie } from '@/lib/auth/session'
 import { env } from '@/lib/env'
 
@@ -37,12 +37,23 @@ export async function GET(req: Request) {
 
   try {
     const tokens = await exchangeCode(code)
-    const user = await fetchMe(tokens.access_token)
+    // Identity + guild-membership in parallel — both reads use the same
+    // access token and the bot/login can tolerate either independently
+    // failing (fetchGuildIds returns [] on its own errors).
+    const [user, guildIds] = await Promise.all([
+      fetchMe(tokens.access_token),
+      fetchGuildIds(tokens.access_token),
+    ])
     const token = await mintSession({
       id: user.id,
       username: user.global_name ?? user.username,
       global_name: user.global_name,
       avatar: user.avatar,
+      // Captured at login; readers treat as a UI hint (sidebar gates),
+      // never as an authorization grant. Stays in the JWT for the
+      // 3-day TTL — users moving in/out of guilds within that window
+      // just see slightly stale sidebar gating until they log back in.
+      guildIds,
     })
     await setSessionCookie(token)
     return NextResponse.redirect(homeUrl())

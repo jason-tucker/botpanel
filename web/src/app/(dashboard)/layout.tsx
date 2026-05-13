@@ -17,6 +17,7 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
+import { env } from '@/lib/env'
 import { DashboardShell } from './DashboardShell'
 
 export const dynamic = 'force-dynamic'
@@ -27,8 +28,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const access = await resolveAccess(session)
 
+  // Squishy is single-guild — we pass GUILD_ID down to the client-side
+  // sidebar so it can compare against `session.guildIds` and hide the
+  // Squishy nav for users who aren't in the configured guild. Otter is
+  // multi-guild so we don't have a single ID to check; the sidebar uses
+  // the otter-business-rank proxy instead (see Sidebar.tsx).
+  const squishyGuildId = env.GUILD_ID ?? null
+
   return (
-    <DashboardShell access={access} session={session}>
+    <DashboardShell access={access} session={session} squishyGuildId={squishyGuildId}>
       {children}
     </DashboardShell>
   )

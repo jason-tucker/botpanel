@@ -18,6 +18,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
+import { resolveAccess } from '@/lib/auth/perms'
+import { env } from '@/lib/env'
 import { ReportForm } from './ReportForm'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +27,23 @@ export const dynamic = 'force-dynamic'
 export default async function ReportPage() {
   const session = await getSession()
   if (!session) redirect('/api/auth/login')
+
+  const access = await resolveAccess(session)
+
+  // Each form is per-bot-gated on guild membership so users only see
+  // forms for the bots they actually use. Mirrors the Sidebar gates so
+  // the experience stays consistent. Legacy JWTs (no guildIds field)
+  // fall back to "show both" — same posture as the sidebar.
+  const guildIdsKnown = Array.isArray(session.guildIds)
+  const squishyGuildId = env.GUILD_ID ?? null
+  const inSquishyGuild =
+    guildIdsKnown && squishyGuildId !== null
+      ? (session.guildIds ?? []).includes(squishyGuildId)
+      : null
+  const inOtterGuild = Object.keys(access.otter.businesses).length > 0
+
+  const showSquishyForm = inSquishyGuild === null ? true : inSquishyGuild || access.botOwner
+  const showOtterForm = inOtterGuild || access.botOwner
 
   return (
     <main className="min-h-dvh p-6 sm:p-10 pt-16 md:pt-10">
@@ -44,8 +63,15 @@ export default async function ReportPage() {
           </Link>
         </header>
 
-        <ReportForm bot="squishy" />
-        <ReportForm bot="otter" />
+        {showSquishyForm && <ReportForm bot="squishy" />}
+        {showOtterForm && <ReportForm bot="otter" />}
+        {!showSquishyForm && !showOtterForm && (
+          <div className="rounded-xl border border-line bg-bg-card p-6 text-sm text-ink-dim">
+            You don&apos;t appear to be in either bot&apos;s Discord server, so
+            there&apos;s no report form available right now. Join one of the
+            servers and refresh — the relevant form will appear automatically.
+          </div>
+        )}
       </div>
     </main>
   )

@@ -86,6 +86,11 @@ export const POST = withAuth(
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
 
+    // `games.set_prefs` on the bot side iterates every pref, performs a
+    // `members.fetch()` (uncached), and applies a channel-view overwrite +
+    // ping-role grant per row. With ~10 games and a cold member cache the
+    // round-trip routinely exceeds the 5s default and the user sees a bare
+    // "timeout" banner. Bump to 20s so the slow-but-real path completes.
     const reply = await callBot<{
       applied: number
       skipped: number
@@ -93,7 +98,7 @@ export const POST = withAuth(
     }>('squishy', 'games.set_prefs', {
       userId: access.actor.id,
       prefs: parsed.prefs,
-    })
+    }, { timeoutMs: 20_000 })
 
     if (!reply.ok) {
       await writeAudit({
@@ -108,9 +113,29 @@ export const POST = withAuth(
         success: false,
         errorMessage: reply.error,
       }).catch(() => {})
+      // Map the cryptic transport-level error codes onto user-readable
+      // sentences so the ServerForm banner doesn't just say "timeout".
+      // Actual save state for a timeout is "unknown" — the bot may have
+      // applied some/all rows before missing the reply deadline — so we
+      // tell the user to refresh rather than retry blindly.
+      const friendlyError =
+        reply.error === 'timeout'
+          ? 'SquishyBot didn’t reply in time. Some or all of your changes may have applied — refresh the page to see the current state.'
+          : reply.error === 'rpc-not-configured'
+            ? 'Panel ↔ bot bridge isn’t configured on this deploy. Contact the bot owner.'
+            : reply.error === 'redis-down'
+              ? 'Panel ↔ bot bridge is offline right now. Try again in a moment.'
+              : `SquishyBot rejected the save: ${reply.error}`
       const status =
-        reply.error === 'timeout' || reply.error === 'rpc-not-configured' ? 503 : 400
-      return NextResponse.json({ error: reply.error, details: reply.details }, { status })
+        reply.error === 'timeout' ||
+        reply.error === 'rpc-not-configured' ||
+        reply.error === 'redis-down'
+          ? 503
+          : 400
+      return NextResponse.json(
+        { error: friendlyError, code: reply.error, details: reply.details },
+        { status },
+      )
     }
 
     await writeAudit({
