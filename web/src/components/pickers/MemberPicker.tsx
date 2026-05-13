@@ -4,7 +4,7 @@
  * `<MemberPicker>` — typeahead combobox over the configured guild's members.
  *
  * Renders a search `<input>` plus a dropdown list. Every keystroke triggers
- * a debounced (200ms) GET against `/api/squishy/meta/members?q=...` — no
+ * a debounced (200ms) GET against `/api/<bot>/meta/members?q=...` — no
  * upstream cache there (members change too often), but the bot side is a
  * pure in-memory iteration so the round-trip is sub-ms locally.
  *
@@ -23,6 +23,8 @@
  *  - `defaultValue`— uncontrolled initial selected user ID.
  *  - `onChange`    — fires with the new user ID when a row is picked.
  *  - `placeholder` — optional placeholder for the search input.
+ *  - `bot`         — which bot's guild to search ('squishy' default | 'otter').
+ *                    Pick determines the API route used for the typeahead.
  */
 import { useEffect, useRef, useState } from 'react'
 
@@ -48,13 +50,16 @@ export function MemberPicker({
   defaultValue,
   onChange,
   placeholder,
+  bot = 'squishy',
 }: {
   name: string
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
   placeholder?: string
+  bot?: 'squishy' | 'otter'
 }) {
+  const apiBase = `/api/${bot}/meta/members`
   const [text, setText] = useState('')
   const [selectedId, setSelectedId] = useState(value ?? defaultValue ?? '')
   const [members, setMembers] = useState<Member[]>([])
@@ -78,7 +83,7 @@ export function MemberPicker({
   useEffect(() => {
     if (!selectedId || text) return
     let alive = true
-    fetch(`/api/squishy/meta/members?q=&limit=100`, { credentials: 'same-origin' })
+    fetch(`${apiBase}?q=&limit=100`, { credentials: 'same-origin' })
       .then(r => r.json())
       .then((body: { members?: Member[] }) => {
         if (!alive) return
@@ -101,7 +106,7 @@ export function MemberPicker({
     debounceRef.current = setTimeout(() => {
       setLoading(true)
       setError(null)
-      fetch(`/api/squishy/meta/members?q=${encodeURIComponent(text)}&limit=25`, {
+      fetch(`${apiBase}?q=${encodeURIComponent(text)}&limit=25`, {
         credentials: 'same-origin',
       })
         .then(r => r.json())
@@ -122,7 +127,7 @@ export function MemberPicker({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [text])
+  }, [text, apiBase])
 
   // Click-outside closes the dropdown.
   useEffect(() => {
