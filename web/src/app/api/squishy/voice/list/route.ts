@@ -85,7 +85,7 @@ export const GET = withAuth(
       const viewerId = access.viewing.id
       const viewerIsPriv = access.botOwner || access.squishy.sudo
 
-      const rows: ChannelRow[] = channels.map((c) => {
+      const allRows: ChannelRow[] = channels.map((c) => {
         const canControl =
           viewerIsPriv ||
           viewerId === c.ownerUserId ||
@@ -105,6 +105,23 @@ export const GET = withAuth(
           canControl,
         }
       })
+
+      // Visibility filter — sudo/owner see everything; everyone else only
+      // sees channels they have a real relationship with:
+      //   1. owner / acting-owner / host (matches `canControl`)
+      //   2. currently a member of the voice channel (in
+      //      `auto_channel_members` — matches the Discord view since
+      //      auto-channel text permissions are member-scoped)
+      // Hidden channels still show to non-priv viewers as long as the
+      // viewer passes the same gate — they're already inside, so the
+      // dashboard parity holds.
+      const rows: ChannelRow[] = viewerIsPriv
+        ? allRows
+        : allRows.filter(
+            (c) =>
+              c.canControl ||
+              c.members.some((m) => m.userId === viewerId),
+          )
 
       // Batch-resolve every snowflake referenced by the snapshot (owners,
       // acting owners, hosts, members) into `{username, displayName,
@@ -129,5 +146,5 @@ export const GET = withAuth(
       return NextResponse.json({ channels: [], resolved: {}, error: 'db-unavailable' })
     }
   },
-  { require: 'sudo' },
+  { require: 'any' },
 )
