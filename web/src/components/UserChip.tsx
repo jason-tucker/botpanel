@@ -14,6 +14,7 @@
  * snowflake (audit cross-ref, copy-paste into Discord dev) can still get
  * it without hunting through the page.
  */
+import Image from 'next/image'
 import type { ResolvedUser } from '@/lib/userDisplay'
 
 export type UserChipProps = {
@@ -39,17 +40,15 @@ export function UserChip({ userId, resolved }: UserChipProps) {
       className="inline-flex items-center gap-1.5 align-middle whitespace-nowrap"
       title={`${userId} · @${resolved.username}`}
     >
-      {/* Plain <img> rather than next/image: Discord CDN URLs are signed
-          per-size + per-request and next/image's optimizer would proxy
-          them through our origin for no benefit. 24×24 raw is fine. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      {/* next/image: cdn.discordapp.com is allowlisted in next.config.mjs so
+          Next.js can serve auto-WebP + srcset for high-DPI. Lazy by default,
+          which is what we want for chip lists (audit table, voice page, etc.). */}
+      <Image
         src={resolved.avatarUrl}
         alt=""
         width={24}
         height={24}
         className="h-6 w-6 rounded-full border border-line"
-        loading="lazy"
         referrerPolicy="no-referrer"
       />
       <span className="text-sm text-ink">@{label}</span>

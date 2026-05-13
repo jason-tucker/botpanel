@@ -15,6 +15,16 @@ const nextConfig = {
   // a build-time concern in Next.js — can't be flipped at runtime).
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || undefined,
 
+  // Allowlist Discord's CDN so <Image> can serve avatars with auto-WebP,
+  // lazy loading, and srcset for high-DPI. Without this Next.js refuses to
+  // optimize the URL and we fall back to raw <img> which skips all of that.
+  // Next 15+ prefers remotePatterns over the legacy `domains` array.
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'cdn.discordapp.com', pathname: '/**' },
+    ],
+  },
+
   // Tighten the response headers. Cloudflare adds its own on top; this defends
   // even if traffic ever reaches the origin directly.
   async headers() {
