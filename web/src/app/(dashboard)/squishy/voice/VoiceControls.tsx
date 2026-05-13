@@ -144,9 +144,11 @@ export function VoiceControls(props: VoiceControlsProps): React.JSX.Element {
             <RenameForm {...props} />
             <ToggleRow {...props} />
             <HostsList
+              voiceChannelId={props.voiceChannelId}
               ownerUserId={props.ownerUserId}
               hostUserIds={props.hostUserIds}
               resolved={props.resolved}
+              onMutated={props.onMutated}
             />
             <TransferForm {...props} />
             <DisconnectList {...props} />
@@ -226,20 +228,27 @@ function ToggleRow({
 }
 
 function HostsList({
+  voiceChannelId,
   ownerUserId,
   hostUserIds,
   resolved,
-}: { ownerUserId: string; hostUserIds: string[]; resolved?: Map<string, ResolvedUserLite> }) {
+  onMutated,
+}: {
+  voiceChannelId: string
+  ownerUserId: string
+  hostUserIds: string[]
+  resolved?: Map<string, ResolvedUserLite>
+  onMutated?: () => void
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className={labelCls}>Hosts</div>
-      {hostUserIds.length === 0 ? (
-        <p className="text-xs text-ink-dim flex items-baseline gap-1.5 flex-wrap">
-          <span>No hosts yet. (Owner:</span>
-          <MemberInline userId={ownerUserId} resolved={resolved} />
-          <span>) Use Discord to add hosts — host management lands in a later wave.</span>
-        </p>
-      ) : (
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <span className={labelCls}>Hosts</span>
+        <span className="text-[11px] text-ink-dim inline-flex items-baseline gap-1.5">
+          Owner: <MemberInline userId={ownerUserId} resolved={resolved} />
+        </span>
+      </div>
+      {hostUserIds.length > 0 && (
         <ul className="flex flex-col gap-1">
           {hostUserIds.map((h) => (
             <li
@@ -247,11 +256,42 @@ function HostsList({
               className="flex items-center justify-between gap-2 rounded-md border border-line bg-bg-card3 px-2.5 py-1.5 transition-colors duration-150 hover:bg-bg-card3/70"
             >
               <MemberInline userId={h} resolved={resolved} />
-              <span className="text-xs text-ink-dim shrink-0">host</span>
+              <ServerForm
+                action={`/api/squishy/voice/${voiceChannelId}/hosts/toggle`}
+                method="POST"
+                onSuccess={() => onMutated?.()}
+                confirm={`Remove ${resolved?.get(h)?.displayName || h} as a host?`}
+                className="inline"
+              >
+                <input type="hidden" name="userId" value={h} />
+                <input type="hidden" name="op" value="remove" />
+                <button
+                  type="submit"
+                  className={btnDanger}
+                  aria-label={`Remove host ${resolved?.get(h)?.displayName || h}`}
+                >
+                  ✕
+                </button>
+              </ServerForm>
             </li>
           ))}
         </ul>
       )}
+      <ServerForm
+        action={`/api/squishy/voice/${voiceChannelId}/hosts/toggle`}
+        method="POST"
+        onSuccess={() => onMutated?.()}
+        className="flex items-center gap-2"
+        resetOnSuccess
+      >
+        <input type="hidden" name="op" value="add" />
+        <div className="flex-1">
+          <MemberPicker name="userId" placeholder="Search a member to make host…" />
+        </div>
+        <button type="submit" className={btnPrimary}>
+          Add host
+        </button>
+      </ServerForm>
     </div>
   )
 }
