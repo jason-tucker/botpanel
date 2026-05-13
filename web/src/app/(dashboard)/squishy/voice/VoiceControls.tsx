@@ -24,6 +24,7 @@
  */
 import { useState } from 'react'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { MemberPicker } from '@/components/pickers/MemberPicker'
 
 const inputCls =
   'w-full rounded-md border border-line bg-bg-card2 px-3 py-1.5 text-sm text-ink placeholder:text-ink-dim focus:outline-none focus:ring-1 focus:ring-line'
@@ -174,7 +175,6 @@ function HostsList({
 
 function TransferForm({
   voiceChannelId,
-  ownerUserId,
   onMutated,
 }: VoiceControlsProps) {
   return (
@@ -185,20 +185,11 @@ function TransferForm({
       confirm="Transfer ownership? The new owner gets full control of this room immediately and any active grace window is cancelled."
       className="flex flex-col gap-1.5"
     >
-      <label className={labelCls} htmlFor={`vc-transfer-${voiceChannelId}`}>
-        Transfer ownership (Discord user ID)
-      </label>
+      <div className={labelCls}>Transfer ownership</div>
       <div className="flex items-center gap-2">
-        <input
-          id={`vc-transfer-${voiceChannelId}`}
-          name="newOwnerUserId"
-          type="text"
-          inputMode="numeric"
-          pattern="\d{15,25}"
-          placeholder={ownerUserId}
-          required
-          className={inputCls}
-        />
+        <div className="flex-1">
+          <MemberPicker name="newOwnerUserId" placeholder="Search members…" />
+        </div>
         <button type="submit" className={btnPrimary}>
           Transfer
         </button>
