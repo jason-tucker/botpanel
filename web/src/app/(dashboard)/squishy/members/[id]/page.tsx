@@ -516,6 +516,28 @@ export default async function MemberDrillPage({
 
   // Parallel load — every section reads from its own table; we let one
   // failure degrade just that section rather than 500ing the page.
+  //
+  // Audit rows + the username resolution for their actors are chained via
+  // `.then()` INSIDE the Promise.all rather than awaited after it. Before
+  // this refactor, `resolveUsernames('squishy', auditUserIds)` was a
+  // separate `await` AFTER the parallel batch — on a cold cache that
+  // serialized a 5–20s RPC behind the rest of the page (every section's
+  // DB query had to finish before we even started the bot round-trip).
+  // Now the audit-row query kicks off the username resolve as soon as it
+  // returns, and the rest of the page loads in parallel with both. The
+  // <AuditTable> tolerates a partial resolved map (it falls back to the
+  // raw snowflake for unknown ids), so any audit-row ids we somehow
+  // missed pre-resolve aren't a correctness issue — just a UX one.
+  const auditAndResolved = loadAuditRows(id).then(async (rows) => {
+    const auditUserIds: string[] = []
+    for (const r of rows) {
+      auditUserIds.push(r.actorUserId)
+      if (r.viewingUserId) auditUserIds.push(r.viewingUserId)
+    }
+    const resolved = await resolveUsernames('squishy', auditUserIds)
+    return { rows, resolved }
+  })
+
   const [
     profile,
     gameRows,
@@ -523,7 +545,7 @@ export default async function MemberDrillPage({
     voicePresence,
     colorState,
     pendingApprovals,
-    auditRows,
+    auditBundle,
     targetUser,
   ] = await Promise.all([
     loadProfile(guildId, id),
@@ -532,22 +554,16 @@ export default async function MemberDrillPage({
     loadVoicePresence(id),
     loadColorState(guildId, id),
     loadPendingApprovals(guildId, id),
-    loadAuditRows(id),
+    auditAndResolved,
     resolveOneUsername('squishy', id),
   ])
 
-  // Audit page needs resolved usernames for every actor it shows.
-  const auditUserIds: string[] = []
-  for (const r of auditRows) {
-    auditUserIds.push(r.actorUserId)
-    if (r.viewingUserId) auditUserIds.push(r.viewingUserId)
-  }
-  const auditUserRaw = await resolveUsernames('squishy', auditUserIds)
+  const auditRows = auditBundle.rows
   // <AuditTable> expects Map<string, {id, username?, avatar?}> — the
   // shape returned by `resolveUsernames` is {username, displayName, avatarUrl}.
   // Adapt: id from the map key, prefer displayName, avatarUrl → avatar.
   const auditUserMap = new Map<string, { id: string; username?: string | null; avatar?: string | null }>()
-  for (const [uid, ru] of auditUserRaw) {
+  for (const [uid, ru] of auditBundle.resolved) {
     auditUserMap.set(uid, {
       id: uid,
       username: ru.displayName ?? ru.username,
