@@ -78,10 +78,15 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
 
   // We render top-level links inline (no heading) and grouped links with a
   // heading — easier to scan than one mega-list.
+  // `Active Voice` is a top-level link for everyone — the page itself
+  // filters per-viewer (members see channels they're in / own / host;
+  // sudo sees all). The Squishy group below stays sudo-only because the
+  // rest of those surfaces (Settings, Hubs, Games, etc.) are sudo-edit.
   const topLinks: NavLink[] = [
     { href: '/', label: 'Home' },
     { href: '/me', label: 'Dashboard' },
     { href: '/me/edit', label: 'Edit my profile' },
+    { href: '/squishy/voice', label: 'Active Voice' },
   ]
   const squishyGroup: NavGroup = {
     heading: 'Squishy',
@@ -94,7 +99,6 @@ export function Sidebar({ access, session }: { access: AccessMap; session: Sessi
       { href: '/squishy/automation', label: 'Automation' },
       { href: '/squishy/roles', label: 'Roles' },
       { href: '/squishy/archives', label: 'Archives' },
-      { href: '/squishy/voice', label: 'Active Voice' },
       { href: '/squishy/audit', label: 'Audit log' },
     ],
   }

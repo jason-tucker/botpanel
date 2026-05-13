@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Auto-PR vendored bot schemas on `repository_dispatch`.** New `.github/workflows/sync-bot-schema.yml` listens for `bot-schema-changed` events from otterbot and squishybot. Re-runs `scripts/sync-schema.sh`, opens (or updates) one rolling PR on `auto/sync-bot-schemas` if there's drift. Closes the race where merging a bot schema change put `main` into a red `verify-schemas` state for several minutes (incident: 2026-05-12 `business_messages`). Manual fire via Actions UI for backfilling / testing. Auth: `BOTPANEL_DISPATCH_PAT`.
 
 ### Added
+- **`/squishy/voice` is now visible to all logged-in users, filtered per-viewer.** Was sudo-only; now any logged-in user sees the channels they have a real relationship with (currently in / own / host / acting-owner). Sudo / bot-owner still see everything. The per-channel "Controls" popover stays gated on owner/host/acting-owner/sudo (matches Discord — you can't rename someone else's room). The SSE event stream applies the same filter live: a member joining a channel extends their visibility on the next event; leaving contracts it. Sidebar gets a top-level "Active Voice" link visible to everyone (above the sudo-gated Squishy group).
+
 - **Edit `/caked` and `/oc` card text from the panel.** Caked managers/owners can now edit the Contact / Event / Pricing card bodies that `/caked` shows; OC managers/owners can edit the Requirements card from `/oc`. Both pages got a new "Edit message content" section above the existing post-to-channel form. Saves go through new `business_messages.update` / `.reset` RPC verbs which enforce manager+ rank server-side and audit every change.
 
 ### Fixed
