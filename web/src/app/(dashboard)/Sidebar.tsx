@@ -127,48 +127,88 @@ export function Sidebar({
   const showMke = access.otter.businesses.mke != null || access.botOwner
   const showSudo = access.squishy.sudo || access.botOwner
 
-  // Top-level links — split into "everyone" and "per-bot" so we can
-  // gate the per-bot ones on guild membership without polluting the
-  // unified array. `Report a bug` stays on the everyone list because
-  // each form inside the page is itself per-bot-gated (see report/page).
-  // `Active Voice` and `My game prefs` are Squishy-specific and only
-  // useful if the user is actually in Squishy's guild.
+  // Nav structure mirrors the Discord slash-command flow. Each group
+  // header reads like a slash command (or the menu the bot exposes via
+  // that command), and each link in the group is what you'd hit clicking
+  // a button inside it. Matches the bot's own information architecture
+  // so a user fluent in slash commands finds the panel intuitive.
+  //
+  // Map:
+  //   "Home"               — landing + bug report (`/help`, `/report`).
+  //   "/settings"          — self-service (Profile · Game Prefs · Staff).
+  //   "Squishy · /sudo"    — sudo admin (Settings, Manage User, Hubs, …).
+  //                          Direct mirror of `/sudo`'s select-menu panel.
+  //   "Squishy · More"     — surfaces not mapped to a slash button but
+  //                          still operational: Welcome/Goodbye, Profiles,
+  //                          Games catalog, Automation, Roles, Archives,
+  //                          per-bot audit log.
+  //   "Otter"              — direct slash command mirrors: /portal, /oc,
+  //                          /caked, /lookup-style MKE access.
+  //   "Sudo-only"          — cross-bot owner tooling (kept).
   const topLinksAlways: NavLink[] = [
     { href: '/', label: 'Home' },
     { href: '/me', label: 'Dashboard' },
-    { href: '/me/edit', label: 'Edit my profile' },
+    { href: '/report', label: '/report' },
   ]
-  const topLinksSquishy: NavLink[] = [
-    { href: '/me/games', label: 'My game prefs' },
-    { href: '/squishy/voice', label: 'Active Voice' },
-  ]
-  const topLinksReport: NavLink[] = [{ href: '/report', label: 'Report a bug' }]
-  const squishyGroup: NavGroup = {
-    heading: 'Squishy',
+  // "/settings" self-service group — mirrors the three buttons on
+  // squishybot's `/settings` panel. Only shown when the user is in the
+  // Squishy guild (the staff-role flow is squishy-specific).
+  const settingsGroup: NavGroup = {
+    heading: '/settings',
+    links: [
+      { href: '/me/edit', label: 'Profile & Birthday' },
+      { href: '/me/games', label: 'Game Prefs' },
+      // Self-service staff role request lives at /me/staff in PR 2.
+      // Until then, the Squishy admin members page covers it via View-As.
+    ],
+  }
+  // Voice control panel — squishy's `/voice` slash gets its own entry
+  // (separate from /sudo's Active VCs which lists everything).
+  const voiceLink: NavLink = { href: '/squishy/voice', label: '/voice' }
+  // "Squishy · /sudo" — mirrors the bot's `/sudo` select-menu panel.
+  // Buttons in `/sudo` map to: Settings, Manage user, Game Night,
+  // Active VCs, Hubs, Force cleanup, Pending approvals, Run reconciler,
+  // Restart instructions. We only render the ones that have a panel
+  // surface today; the rest land via PR 2.
+  const squishyAdminGroup: NavGroup = {
+    heading: 'Squishy · /sudo',
     links: [
       { href: '/squishy/settings', label: 'Settings' },
-      { href: '/squishy/welcome', label: 'Welcome / Goodbye' },
+      { href: '/squishy/members', label: 'Manage User' },
       { href: '/squishy/hubs', label: 'Hubs' },
-      { href: '/squishy/games', label: 'Games' },
+      // Game Night / Force cleanup / Pending approvals / Run reconciler
+      // are PR 2 additions — see CHANGELOG.
+    ],
+  }
+  // "Squishy · More" — surfaces with no direct slash-command equivalent
+  // but still useful (Welcome/Goodbye autopost, profile gallery, game
+  // catalog editor, automation rules, role manager, archives, per-bot
+  // audit log). Kept as a separate group so the sudo flow above stays
+  // tightly aligned to the slash panel.
+  const squishyMoreGroup: NavGroup = {
+    heading: 'Squishy · More',
+    links: [
+      { href: '/squishy/welcome', label: 'Welcome / Goodbye' },
       { href: '/squishy/profiles', label: 'Profiles' },
-      { href: '/squishy/members', label: 'Members' },
+      { href: '/squishy/games', label: 'Games (catalog)' },
       { href: '/squishy/automation', label: 'Automation' },
       { href: '/squishy/roles', label: 'Roles' },
       { href: '/squishy/archives', label: 'Archives' },
       { href: '/squishy/audit', label: 'Audit log' },
     ],
   }
-  // MKE link sits between Businesses and OC Stock — it's a per-business
-  // staff view, so it reads naturally right after the businesses index.
-  // The link is rendered conditionally below based on `showMke` so users
-  // without an MKE rank don't see a 403-bound link.
+  // Otter group — labels match slash command names so users who type
+  // them in Discord recognize the panel surface instantly. MKE only
+  // appears for users with an MKE rank (staff lookup tooling, not
+  // public). Missing slash mirrors (/lookup, /business, /employee,
+  // /printinfo, /artsize, /tcsheet, /movechannel) land in PR 2.
   const otterGroup: NavGroup = {
     heading: 'Otter',
     links: [
-      { href: '/otter/businesses', label: 'Businesses' },
-      ...(showMke ? [{ href: '/otter/mke', label: 'MKE' }] : []),
-      { href: '/otter/oc-stock', label: 'OC Stock' },
-      { href: '/otter/caked', label: 'Caked' },
+      { href: '/otter/businesses', label: '/portal' },
+      ...(showMke ? [{ href: '/otter/mke', label: '/lookup · MKE' }] : []),
+      { href: '/otter/oc-stock', label: '/oc' },
+      { href: '/otter/caked', label: '/caked' },
     ],
   }
   // "Admin Home" (/sudo) and "Debug" (/sudo/debug) are rendered only for
@@ -208,6 +248,8 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
+        {/* Top-level: Home + Dashboard + /report. /report always renders
+            (the page itself per-bot-gates each form on guild membership). */}
         {topLinksAlways.map((l) => (
           <NavItem
             key={l.href}
@@ -217,34 +259,50 @@ export function Sidebar({
             onNavigate={close}
           />
         ))}
-        {/* Squishy-specific top-level links — only when the user is in
-            Squishy's guild (or is the bot owner / has a legacy JWT). */}
-        {squishyGuildVisible &&
-          topLinksSquishy.map((l) => (
+
+        {/* "/settings" self-service group — only meaningful for users in
+            the Squishy guild (the bot the panel mirrors for self-service
+            today). Bot owner sees it regardless. */}
+        {squishyGuildVisible && (
+          <>
+            <GroupHeading>{settingsGroup.heading}</GroupHeading>
+            {settingsGroup.links.map((l) => (
+              <NavItem
+                key={l.href}
+                href={l.href}
+                label={l.label}
+                active={isActive(l.href)}
+                onNavigate={close}
+              />
+            ))}
+            {/* `/voice` slash-command equivalent — separate entry so
+                it reads as the standalone command, not buried under
+                /sudo's Active VCs. Anyone in the guild can hit it
+                (the page itself filters to channels they can see). */}
             <NavItem
-              key={l.href}
-              href={l.href}
-              label={l.label}
-              active={isActive(l.href)}
+              href={voiceLink.href}
+              label={voiceLink.label}
+              active={isActive(voiceLink.href)}
               onNavigate={close}
             />
-          ))}
-        {/* `Report a bug` always renders — the page itself per-bot-gates
-            each form on guild membership. */}
-        {topLinksReport.map((l) => (
-          <NavItem
-            key={l.href}
-            href={l.href}
-            label={l.label}
-            active={isActive(l.href)}
-            onNavigate={close}
-          />
-        ))}
+          </>
+        )}
 
+        {/* "Squishy · /sudo" — mirrors the bot's /sudo select-menu. */}
         {showSquishy && (
           <>
-            <GroupHeading>{squishyGroup.heading}</GroupHeading>
-            {squishyGroup.links.map((l) => (
+            <GroupHeading>{squishyAdminGroup.heading}</GroupHeading>
+            {squishyAdminGroup.links.map((l) => (
+              <NavItem
+                key={l.href}
+                href={l.href}
+                label={l.label}
+                active={isActive(l.href)}
+                onNavigate={close}
+              />
+            ))}
+            <GroupHeading>{squishyMoreGroup.heading}</GroupHeading>
+            {squishyMoreGroup.links.map((l) => (
               <NavItem
                 key={l.href}
                 href={l.href}
