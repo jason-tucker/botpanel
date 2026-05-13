@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Host management on `/squishy/voice` per-channel controls.** The "Hosts" section was a read-only placeholder ("host management lands in a later wave"); it's now a real editor: each existing host gets an `✕` remove button, and a `<MemberPicker>` + "Add host" button at the bottom appends a new one. Calls a new `/api/squishy/voice/[id]/hosts/toggle` route which fires the new squishybot `voice.toggle_host` RPC verb. Same gate as transfer/delete (owner / acting-owner / sudo / bot-owner) — hosts can't add their peers; that stays owner-only.
+
 ### Changed
 - **Voice controls render `[avatar] @displayName` chips everywhere.** `/squishy/voice` per-channel popover passes the resolved-user map down to `<HostsList>` + `<DisconnectList>`. Owner line, host rows, and member-disconnect rows now show proper Discord chips instead of raw snowflakes. Confirm dialog + aria-labels use the friendly name.
 - **Voice "Controls" button animates in place.** Was: clicking replaced the button with a static expanded card. Now: the same button morphs to "✕ Close" and the panel slides open below via a CSS grid-rows transition (200ms). All buttons get `transition-colors duration-150` on hover.
