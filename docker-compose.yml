@@ -95,6 +95,19 @@ services:
     # Single Redis used as both the event bus (bots → panel) AND the command
     # bus (panel → bots, V2+). Internal only — no host port.
     # Bots reach it as `redis:6379` over the shared botpanel-net network.
+    #
+    # `profiles: [primary]` — only the prod clone brings this up. The dev
+    # clone shares this same redis instance over the botpanel-net network
+    # (CLAUDE.md: "dev clone is not a separate redis/db world"). Without
+    # this gate, both clones spin up their own `redis` container with the
+    # same network alias — DNS round-robins between them, and panel
+    # publishes from the dev clone end up on dev-redis while the bot is
+    # psubscribe'd to prod-redis. Every callBot() then times out.
+    #
+    # To start the prod clone: `COMPOSE_PROFILES=primary docker compose up -d`.
+    # Dev clone runs `docker compose up -d` without that env — redis is
+    # skipped and the panel/caddy resolve `redis` to the prod container.
+    profiles: ["primary"]
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
