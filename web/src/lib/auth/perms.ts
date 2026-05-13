@@ -107,43 +107,47 @@ async function loadVoiceChannels(userId: string): Promise<string[]> {
   }
 }
 
+// Module-level cache so resolveAccess() across many requests doesn't
+// hammer the bot. Keyed by userId. 60s TTL — fresh enough that a sudo
+// granting someone a role sees the effect within a minute on the panel.
+const otterRanksCache = new Map<string, { ranks: Record<string, BusinessRank>; expiresAt: number }>()
+const OTTER_RANKS_TTL_MS = 60_000
+
 async function loadOtterBusinesses(userId: string): Promise<Record<string, BusinessRank>> {
+  const now = Date.now()
+  const cached = otterRanksCache.get(userId)
+  if (cached && cached.expiresAt > now) return cached.ranks
+
+  // The previous implementation tried to derive otter ranks from direct
+  // SQL — `where m.user_id = $1` on `business_role_mappings`. That column
+  // doesn't exist (the table maps role IDs to ranks, not users; manager
+  // and employee membership lives EXCLUSIVELY as Discord roles on the
+  // member object). The bot's `business.user_ranks` verb walks
+  // `guild.members.cache` + `business_role_mappings.role_id` and folds
+  // in `business_owners` to return the right rank per business slug.
   try {
-    const { otterDb } = await import('../db/otter')
-    if (!otterDb) return {}
-    // role mappings → { slug: rank }
-    const mappingsResult = await otterDb.execute(sql`
-      select b.slug as slug, m.rank as rank
-      from business_role_mappings m
-      join businesses b on b.id = m.business_id
-      where m.user_id = ${userId}
-    `)
-    const mappings = (mappingsResult as unknown as { rows?: unknown[] }).rows ?? (mappingsResult as unknown as unknown[])
+    const { callBot } = await import('../botrpc')
+    const reply = await callBot<{ ranks: Record<string, string> }>(
+      'otter',
+      'business.user_ranks',
+      { userId },
+      { timeoutMs: 3000 },
+    )
+    if (!reply.ok) {
+      // Bot down / unreachable — return empty (no rank). Worse than a
+      // wrong answer, but a missing answer is recoverable on next page
+      // load. Don't cache the empty result so we retry instead of
+      // wedging the user out for 60s.
+      console.warn('[perms] business.user_ranks failed; returning {}', reply.error)
+      return {}
+    }
     const out: Record<string, BusinessRank> = {}
-    for (const row of mappings ?? []) {
-      const r = row as { slug?: unknown; rank?: unknown }
-      if (typeof r.slug !== 'string' || typeof r.rank !== 'string') continue
-      if (r.rank === 'owner' || r.rank === 'manager' || r.rank === 'employee') {
-        out[r.slug] = r.rank
+    for (const [slug, rank] of Object.entries(reply.data.ranks ?? {})) {
+      if (rank === 'owner' || rank === 'manager' || rank === 'employee') {
+        out[slug] = rank
       }
     }
-    // Owner overrides rank — even if a mapping says "manager", explicit
-    // ownership wins. Also lets owners appear without a mapping row.
-    try {
-      const ownersResult = await otterDb.execute(sql`
-        select b.slug as slug
-        from business_owners o
-        join businesses b on b.id = o.business_id
-        where o.user_id = ${userId}
-      `)
-      const owners = (ownersResult as unknown as { rows?: unknown[] }).rows ?? (ownersResult as unknown as unknown[])
-      for (const row of owners ?? []) {
-        const r = row as { slug?: unknown }
-        if (typeof r.slug === 'string') out[r.slug] = 'owner'
-      }
-    } catch (err) {
-      console.warn('[perms] business_owners lookup failed', err)
-    }
+    otterRanksCache.set(userId, { ranks: out, expiresAt: now + OTTER_RANKS_TTL_MS })
     return out
   } catch (err) {
     console.warn('[perms] otter businesses lookup failed; returning {}', err)
