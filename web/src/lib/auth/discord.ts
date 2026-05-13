@@ -68,3 +68,39 @@ export async function fetchMe(accessToken: string): Promise<DiscordUser> {
   if (!res.ok) throw new Error(`Discord /users/@me failed: ${res.status}`)
   return res.json() as Promise<DiscordUser>
 }
+
+/**
+ * Fetch the user's guild memberships via the `guilds` OAuth scope and
+ * return just the IDs. Used at login to seed `session.guildIds` so the
+ * sidebar can hide bot-specific nav for users who aren't in the relevant
+ * guild.
+ *
+ * Non-throwing — Discord's /guilds endpoint occasionally returns 429 or
+ * a transient 5xx and we'd rather log the user in with no guild data
+ * (sidebar falls back to the existing capability flags) than fail the
+ * whole login. Returns `[]` on any failure.
+ *
+ * Bots that don't share a guild with the user still won't grant any
+ * panel capability — the existing `resolveAccess` gates are the source
+ * of truth for authorization. `guildIds` is purely a UI hint.
+ */
+export async function fetchGuildIds(accessToken: string): Promise<string[]> {
+  try {
+    const res = await fetch('https://discord.com/api/users/@me/guilds', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) {
+      console.warn(`Discord /users/@me/guilds failed: ${res.status}`)
+      return []
+    }
+    const data = (await res.json()) as Array<{ id?: unknown }>
+    const ids: string[] = []
+    for (const g of data) {
+      if (g && typeof g.id === 'string') ids.push(g.id)
+    }
+    return ids
+  } catch (err) {
+    console.warn('Discord /users/@me/guilds threw', err)
+    return []
+  }
+}

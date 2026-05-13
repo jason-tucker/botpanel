@@ -17,6 +17,17 @@ export interface Session {
   username: string
   global_name?: string | null
   avatar?: string | null
+  /**
+   * Discord guild IDs the user is a member of, captured at login from the
+   * OAuth `guilds` scope. Used by the sidebar (and similar UI gates) to
+   * hide bot-specific nav for users who aren't in the relevant guild.
+   *
+   * Optional because pre-existing JWTs minted before this field was added
+   * don't have it — readers MUST treat `undefined` as "unknown" rather
+   * than "empty" (use the prior visibility flags as a fallback). New
+   * logins always set this from `https://discord.com/api/users/@me/guilds`.
+   */
+  guildIds?: string[]
   issuedAt: number
 }
 
