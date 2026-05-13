@@ -29,6 +29,8 @@ import { resolveAccess } from '@/lib/auth/perms'
 import { otterDb } from '@/lib/db/otter'
 import { ocStock } from '@/lib/db/schema/otter/ocStock'
 import { OcStockManager, type OcStockItem } from './OcStockManager'
+import { BusinessMessageEditor } from '@/components/otter/BusinessMessageEditor'
+import { loadBusinessMessages } from '@/lib/otter/businessMessages'
 
 export const dynamic = 'force-dynamic'
 
@@ -167,6 +169,12 @@ export default async function OcStockPage() {
 
   const result = await loadStock()
 
+  // Editors get the "Edit message content" section for /oc Requirements.
+  // Non-editors never see this section — same gate as Manage mode.
+  const messagesResult = canEdit
+    ? await loadBusinessMessages('original-clothing', access.actor.id)
+    : null
+
   return (
     <main className="min-h-dvh p-6 sm:p-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
@@ -192,6 +200,25 @@ export default async function OcStockPage() {
             </Link>
           </div>
         </header>
+
+        {canEdit && messagesResult && (
+          messagesResult.ok ? (
+            <BusinessMessageEditor
+              items={messagesResult.items}
+              updateUrl="/api/otter/oc/messages"
+              resetUrl="/api/otter/oc/messages/reset"
+              title="Edit message content"
+              description="Edits the /oc Requirements card sections. Saves apply within ~60 s. Reset removes your override so the section falls back to the bot default."
+            />
+          ) : (
+            <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+              <p className="font-medium mb-1">Couldn&apos;t load editor</p>
+              <p className="text-xs text-amber-200/80">
+                The bot returned <code className="font-mono">{messagesResult.error}</code>.
+              </p>
+            </section>
+          )
+        )}
 
         {!result.ok ? (
           <section className="rounded-2xl border border-line bg-bg-card p-6">
