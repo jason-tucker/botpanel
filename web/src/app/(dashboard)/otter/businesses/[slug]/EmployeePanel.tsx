@@ -492,9 +492,23 @@ function ManageByIdBlock({
     >
       <label className="flex flex-col gap-1 min-w-[14rem]">
         <span className="text-xs uppercase tracking-wider text-ink-dim">
-          Member
+          User ID
         </span>
-        <MemberPicker name="userId" bot="otter" placeholder="Search members…" />
+        {/* Plain snowflake input — the whole point of this block is to act
+            on users who aren't in the live roster (just-left, ban-grant
+            targets), so a MemberPicker over the bot's member cache would
+            silently filter them out. `pattern` matches the API-side Zod
+            schema in employees/_lib.ts so the browser catches obvious typos
+            before the round-trip. */}
+        <input
+          type="text"
+          name="userId"
+          required
+          inputMode="numeric"
+          pattern="\d{15,25}"
+          placeholder="e.g. 987654321098765432"
+          className="rounded-md border border-line bg-bg-card2 px-3 py-1.5 text-sm font-mono"
+        />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wider text-ink-dim">Action</span>
