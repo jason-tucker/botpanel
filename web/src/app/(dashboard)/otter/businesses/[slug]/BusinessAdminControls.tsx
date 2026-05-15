@@ -15,10 +15,6 @@
  *    plus per-row inline Edit (rank + flags) + Remove. Other-rank viewers
  *    see the read-only table.
  *
- * DB-only warning banner ships on EACH edit-enabled card so a viewer
- * scrolling to the role-mappings card after dismissing the owners one
- * still sees it. Wave 7 command bus is the boundary that flips this off.
- *
  * All forms call `router.refresh()` on success — the server re-renders
  * with the updated rows. No optimistic updates: low volume + audit-log
  * symmetry matters more than perceived latency here.
@@ -56,16 +52,6 @@ const RANKS: BusinessRank[] = ['owner', 'manager', 'employee']
 
 function pillClass(extra: string): string {
   return `inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${extra}`
-}
-
-function WarningBanner(): React.JSX.Element {
-  return (
-    <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
-      <span className="font-medium">DB-only change.</span> Discord role
-      assignment / removal arrives with the Wave 7 command bus — this surface
-      only writes the mapping table.
-    </p>
-  )
 }
 
 // ───── Owners ──────────────────────────────────────────────────────────
@@ -163,12 +149,7 @@ export function OwnersCard({
       <h2 className="text-xs uppercase tracking-wider text-ink-dim">
         Owners <span className="text-ink">({owners.length})</span>
       </h2>
-      {isBotOwner && (
-        <>
-          <WarningBanner />
-          <AddOwnerForm slug={slug} />
-        </>
-      )}
+      {isBotOwner && <AddOwnerForm slug={slug} />}
       {owners.length === 0 ? (
         <p className="text-ink-dim text-sm">No owners recorded.</p>
       ) : (
@@ -622,17 +603,14 @@ export function RoleMappingsCard({
         Role mappings <span className="text-ink">({mappings.length})</span>
       </h2>
       {canEdit && (
-        <>
-          <WarningBanner />
-          <details className="rounded-lg border border-line bg-bg-card2 p-3">
-            <summary className="text-sm text-ink cursor-pointer select-none">
-              Add or update mapping
-            </summary>
-            <div className="pt-3">
-              <AddMappingForm slug={slug} />
-            </div>
-          </details>
-        </>
+        <details className="rounded-lg border border-line bg-bg-card2 p-3">
+          <summary className="text-sm text-ink cursor-pointer select-none">
+            Add or update mapping
+          </summary>
+          <div className="pt-3">
+            <AddMappingForm slug={slug} />
+          </div>
+        </details>
       )}
       {sorted.length === 0 ? (
         <p className="text-ink-dim text-sm">

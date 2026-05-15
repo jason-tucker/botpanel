@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Removed
+- **Stale "DB-only change / Wave 7 command bus" banner** on `/otter/businesses/[slug]`. Both OwnersCard and RoleMappingsCard rendered a yellow warning saying Discord role assignment was still a future wave — but Wave 7 has shipped (Sync-roles button is live, EmployeePanel hire/fire/promote/demote go through the bot RPC). Banner deleted along with the now-unused `<WarningBanner>` helper in `BusinessAdminControls.tsx`.
+
 ### Performance
 - **Discord avatars now load via `next/image` with the `cdn.discordapp.com` domain allowlisted in `next.config.mjs`.** Avatars get auto-WebP conversion, lazy loading below the fold, and srcset for high-DPI displays. Most impactful on the audit table, members browser, and voice page where 25+ rows render at once. Swapped raw `<img>` for `<Image>` in `UserChip`, `MemberPicker`, `MembersBrowser`, `VoiceLive`, `VoiceControls` (MemberInline), `Sidebar`, `/me` page, and Otter `EmployeePanel`. The user's own avatar in `Sidebar` and `/me` is marked `priority` (above the fold on every authed view).
 - **`/squishy/members/[id]` audit username resolution now runs in the same parallel batch as the 8-way data load.** The `resolveUsernames('squishy', auditUserIds)` call was a separate `await` after the Promise.all — on a cold cache that serialized a 5-20s `users.resolve` RPC behind every other section's DB query. Chained via `.then()` inside the Promise.all so the rest of the page loads in parallel with the bot round-trip.
