@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **`/otter/businesses/[slug]` — "Manage by ID (advanced)" now takes a snowflake, not a member search.** The block's whole purpose is to act on users who aren't on the live roster (just-left, ban-grant targets), but it was wired to `<MemberPicker bot="otter">` — a typeahead over the bot's cached members. Off-roster users were unfindable, and pasting a raw snowflake didn't help because the picker only sets its hidden `userId` field when you click a dropdown row. Net effect: every submit landed at the API with `userId=""`, which Zod-rejected as `invalid`. Swapped the picker for a plain `<input pattern="\d{15,25}">` so paste-and-submit works.
+
 ### Performance
 - **Discord avatars now load via `next/image` with the `cdn.discordapp.com` domain allowlisted in `next.config.mjs`.** Avatars get auto-WebP conversion, lazy loading below the fold, and srcset for high-DPI displays. Most impactful on the audit table, members browser, and voice page where 25+ rows render at once. Swapped raw `<img>` for `<Image>` in `UserChip`, `MemberPicker`, `MembersBrowser`, `VoiceLive`, `VoiceControls` (MemberInline), `Sidebar`, `/me` page, and Otter `EmployeePanel`. The user's own avatar in `Sidebar` and `/me` is marked `priority` (above the fold on every authed view).
 - **`/squishy/members/[id]` audit username resolution now runs in the same parallel batch as the 8-way data load.** The `resolveUsernames('squishy', auditUserIds)` call was a separate `await` after the Promise.all — on a cold cache that serialized a 5-20s `users.resolve` RPC behind every other section's DB query. Chained via `.then()` inside the Promise.all so the rest of the page loads in parallel with the bot round-trip.
