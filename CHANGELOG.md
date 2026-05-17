@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+- **Force `postcss` ≥ 8.5.10 via `pnpm.overrides` to close CVE-2026-41305 (GHSA-qx2v-qp2m-jg93, moderate, CVSS 6.1).** Next.js 15.5.18 hard-pins `postcss@8.4.31` as a transitive, which is below the patched version. Tailwind/autoprefixer were already on 8.5.14 so two postcss copies coexisted in the lockfile; the Next-pinned one was the vulnerable one. The CVE is an XSS via unescaped `</style>` in postcss's stringifier — only exploitable when user-supplied CSS is parsed and re-stringified into a runtime `<style>` tag, which this app never does (postcss runs at Tailwind build time only). Fixed for lockfile hygiene; no runtime risk existed. Override scoped to `postcss@<8.5.10` so future Next bumps that move past the pin auto-drop the override.
+
 ### Fixed
 - **`/otter/businesses/[slug]` — "Manage by ID (advanced)" now takes a snowflake, not a member search.** The block's whole purpose is to act on users who aren't on the live roster (just-left, ban-grant targets), but it was wired to `<MemberPicker bot="otter">` — a typeahead over the bot's cached members. Off-roster users were unfindable, and pasting a raw snowflake didn't help because the picker only sets its hidden `userId` field when you click a dropdown row. Net effect: every submit landed at the API with `userId=""`, which Zod-rejected as `invalid`. Swapped the picker for a plain `<input pattern="\d{15,25}">` so paste-and-submit works.
 
