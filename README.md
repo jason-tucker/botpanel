@@ -57,7 +57,7 @@ internet → Cloudflare Tunnel → cloudflared container
    This section is here so you can prep the dev portal while the Phase 0 landing page is up. Concrete steps:
 
    1. Open <https://discord.com/developers/applications> and pick the SquishyBot application (we reuse it; OtterBot keeps its own bot identity).
-   2. **OAuth2 → Redirects:** Add `https://<your-hostname>/api/auth/callback` (e.g. `https://bots.tucker.host/api/auth/callback`). **You'll need to add a second entry for the dev hostname later** (`https://dev.bots.tucker.host/api/auth/callback`).
+   2. **OAuth2 → Redirects:** Add `https://<your-hostname>/api/auth/callback` (e.g. `https://bots.tucker.host/api/auth/callback`).
    3. **OAuth2 → Client information:** Copy the **Client ID** (`DISCORD_CLIENT_ID` env) and **Client Secret** (`DISCORD_CLIENT_SECRET` env). Treat the secret like a password — don't commit it.
    4. **OAuth2 → Default Authorization Link → Scopes:** the panel requests `identify guilds guilds.members.read`. (These are user OAuth scopes, NOT bot scopes — the bot keeps its existing token.)
    5. **Team setup** (lets multiple Discord accounts have bot-owner access without sharing the env `BOT_OWNER_ID`):
@@ -68,38 +68,23 @@ internet → Cloudflare Tunnel → cloudflared container
 
    Re-deploy the panel (`scripts/botpanel update`) after setting the OAuth env vars.
 
-   **For the dev clone:** repeat steps 2 with the dev hostname so OAuth login works on `dev.bots.tucker.host` too. The dev `.env` will hold its own `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` only if you want a separate Discord application for dev — otherwise reuse prod's.
-
 ### Deploys
 
-GitHub Actions builds and pushes an image to GHCR on every push:
+GitHub Actions builds and pushes an image to GHCR on every push to `main`:
 
 - `push` to `main` → `ghcr.io/jason-tucker/botpanel:latest` + `:<sha>`
-- `push` to `dev`  → `ghcr.io/jason-tucker/botpanel:dev`    + `:<sha>`
 
 The Watchtower service in the compose stack polls GHCR every 30 s and
 restarts containers whose image tag has changed. **You don't need to SSH
-in to deploy** — push to main (or dev) and the host picks it up in ~30 s.
+in to deploy** — push to main and the host picks it up in ~30 s.
 
-### Production + dev side-by-side
+### Production
 
-Two clones on the VPS, one per branch, each on its own port:
+One stack on the VPS, served at `bots.tucker.host` via Cloudflare Tunnel → `localhost:6080`.
 
-| Clone | Branch | Port | Image tag | Path |
-|---|---|---|---|---|
-| Production | `main` | `6080` | `:latest` | `/home/botuser/projects/botpanel` |
-| Dev | `dev` | `6081` | `:dev` | `/home/botuser/projects/botpanel-dev` |
-
-Each clone has its own `.env` (`BOT_IMAGE`, `PORT`, `COMPOSE_PROJECT_NAME`). The
-single Watchtower in the production clone serves both — it watches every
-container labeled `com.centurylinklabs.watchtower.enable=true` on the host.
-
-Cloudflare Tunnel can route two public hostnames to the two ports:
-
-| Hostname | Service URL |
-|---|---|
-| `bots.tucker.host`     | `http://localhost:6080` |
-| `dev.bots.tucker.host` | `http://localhost:6081` |
+| Branch | Port | Image tag | Path |
+|---|---|---|---|
+| `main` | `6080` | `:latest` | `/home/botuser/projects/botpanel` |
 
 ### Files
 
