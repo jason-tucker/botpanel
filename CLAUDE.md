@@ -25,7 +25,7 @@ Every write API route calls `writeAudit(...)` with `actor`, `viewing` (impersona
 **All feature work targets the `dev` branch, not `main`.** Workflow:
 
 1. Branch from `dev` (or `origin/dev`), do the work, push, open PR with `gh pr create --base dev`.
-2. Merge to `dev` → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → the dev clone at `/home/botuser/projects/botpanel-dev/` auto-pulls via watchtower → verify on `https://bots.tucker.host/dev/`.
+2. Merge to `dev` → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → the dev clone at `/home/botuser/projects/botpanel-dev/` auto-pulls via watchtower → verify on `https://dev-bots.tucker.host/`.
 3. When dev is healthy, open a **promotion PR**: `git checkout -b chore/promote-dev-to-main origin/main && git merge origin/dev --ff-only` (or `--no-ff` if you want a clear merge commit). Open with `gh pr create --base main --title "chore: promote dev to main"`. Merge it. CI builds `:latest` → prod deploys.
 4. After promotion, dev and main are equal again. No long-lived divergence.
 
@@ -120,7 +120,7 @@ Bot schemas live in the bot repos. Panel uses **vendored copies** under `src/lib
 
 Two floating tags, two clones, one watchtower.
 
-- **`dev` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → watchtower auto-pulls → `/home/botuser/projects/botpanel-dev/` (port 6081, served at `bots.tucker.host/dev/`).
+- **`dev` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → watchtower auto-pulls → `/home/botuser/projects/botpanel-dev/` (port 6081, served at `dev-bots.tucker.host`).
 - **`main` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:latest` → watchtower auto-pulls → `/home/botuser/projects/botpanel/` (port 6080, served at `bots.tucker.host/`).
 
 Touched containers restart; untouched ones keep running. The dev clone is **not** a separate redis/db world — it shares prod's botpanel-net, redis, and bot Postgres. The separation is only at the Caddy + Next.js + landing layer (per-clone `NEXT_ALIAS` / `NEXT_HOST` env vars give each clone a unique alias on botpanel-net).

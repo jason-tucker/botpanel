@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Ops
+- **Dev clone now serves at `https://dev-bots.tucker.host/` (its own subdomain), not `bots.tucker.host/dev/` (path prefix).** User stood up the subdomain via a second cloudflared ingress rule pointing at `localhost:6081`. Side-effects: `.github/workflows/deploy.yml` no longer passes `NEXT_PUBLIC_BASE_PATH=/dev` to the dev image build (both clones now serve at `/` of their own hostname); stale comments in `Caddyfile` and `landing/script.js` referencing the old path-prefix tunnel route removed; `CLAUDE.md` URLs updated. **Manual VPS step still required:** update the dev clone's `PUBLIC_BASE_URL` env from `https://bots.tucker.host/dev` to `https://dev-bots.tucker.host`. Tracking: #191.
+
 ### Changed
 - **`/me` voice-channel list shows names + renders each row as a tappable button.** Was a wrap of tiny font-mono snowflakes that didn't tell you which channel was which. The page now resolves each id against `auto_channels` server-side (manual name → fallback name → bare id), and renders each as a full-width row with the name prominent, the id as a muted mono subtitle, and a hover affordance + chevron. Raw-id rendering still happens if the DB lookup misses (channel just disappeared, or `squishyDb` unreachable). Click still goes to `/squishy/voice`.
 
