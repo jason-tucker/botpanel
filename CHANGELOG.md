@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **`/me` voice-channel list shows names + renders each row as a tappable button.** Was a wrap of tiny font-mono snowflakes that didn't tell you which channel was which. The page now resolves each id against `auto_channels` server-side (manual name → fallback name → bare id), and renders each as a full-width row with the name prominent, the id as a muted mono subtitle, and a hover affordance + chevron. Raw-id rendering still happens if the DB lookup misses (channel just disappeared, or `squishyDb` unreachable). Click still goes to `/squishy/voice`.
+
 ### Ops
 - **CI now runs on pull requests (not just `push` to main/dev).** `deploy.yml` gained a `pull_request:` trigger; PRs run `verify-schemas` + a full Docker build of both images, but skip the GHCR push (`push: ${{ github.event_name == 'push' }}`). FLOATING_TAG resolves to `pr-<number>` on PRs to keep the tag string valid even though it's unused. `NEXT_PUBLIC_BASE_PATH` resolves from `github.base_ref` on PRs so a PR targeting `dev` builds with `/dev` like the dev clone does. Closes the gap where merging to dev was the only way to know if the build worked.
 
