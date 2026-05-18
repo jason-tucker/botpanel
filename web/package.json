@@ -16,7 +16,7 @@
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.4.1",
     "jose": "^5.9.6",
-    "lucide-react": "^0.460.0",
+    "lucide-react": "^1.16.0",
     "next": "^15.0.3",
     "postgres": "^3.4.5",
     "react": "^19.0.0-rc-66855b96-20241106",
