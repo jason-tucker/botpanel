@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Ops
+- **CI now runs on pull requests (not just `push` to main/dev).** `deploy.yml` gained a `pull_request:` trigger; PRs run `verify-schemas` + a full Docker build of both images, but skip the GHCR push (`push: ${{ github.event_name == 'push' }}`). FLOATING_TAG resolves to `pr-<number>` on PRs to keep the tag string valid even though it's unused. `NEXT_PUBLIC_BASE_PATH` resolves from `github.base_ref` on PRs so a PR targeting `dev` builds with `/dev` like the dev clone does. Closes the gap where merging to dev was the only way to know if the build worked.
+
 ### Security
 - **Force `postcss` ≥ 8.5.10 via `pnpm.overrides` to close CVE-2026-41305 (GHSA-qx2v-qp2m-jg93, moderate, CVSS 6.1).** Next.js 15.5.18 hard-pins `postcss@8.4.31` as a transitive, which is below the patched version. Tailwind/autoprefixer were already on 8.5.14 so two postcss copies coexisted in the lockfile; the Next-pinned one was the vulnerable one. The CVE is an XSS via unescaped `</style>` in postcss's stringifier — only exploitable when user-supplied CSS is parsed and re-stringified into a runtime `<style>` tag, which this app never does (postcss runs at Tailwind build time only). Fixed for lockfile hygiene; no runtime risk existed. Override scoped to `postcss@<8.5.10` so future Next bumps that move past the pin auto-drop the override.
 
