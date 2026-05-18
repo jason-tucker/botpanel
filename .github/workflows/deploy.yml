@@ -2,9 +2,9 @@ name: Deploy Botpanel
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
   workflow_dispatch:
 
 # Cancel any in-progress run when a newer push lands on the same branch.
@@ -72,23 +72,11 @@ jobs:
         run: |
           echo "GIT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-          # On PRs we build but don't push; resolve target from base_ref so the
-          # /dev basePath is built when the PR targets dev.
+          # Tag: :latest on main pushes, pr-N on PRs (unused — PRs don't push).
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            TARGET="${{ github.base_ref }}"
             echo "FLOATING_TAG=pr-${{ github.event.number }}" >> "$GITHUB_OUTPUT"
           else
-            TARGET="${{ github.ref_name }}"
-            if [ "$TARGET" = "main" ]; then
-              echo "FLOATING_TAG=latest" >> "$GITHUB_OUTPUT"
-            else
-              echo "FLOATING_TAG=$TARGET" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-          if [ "$TARGET" = "dev" ]; then
-            echo "NEXT_PUBLIC_BASE_PATH=/dev" >> "$GITHUB_OUTPUT"
-          else
-            echo "NEXT_PUBLIC_BASE_PATH=" >> "$GITHUB_OUTPUT"
+            echo "FLOATING_TAG=latest" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push Caddy ingress image
@@ -118,6 +106,5 @@ jobs:
           build-args: |
             GIT_SHA=${{ steps.meta.outputs.GIT_SHA }}
             BUILD_TIME=${{ steps.meta.outputs.BUILD_TIME }}
-            NEXT_PUBLIC_BASE_PATH=${{ steps.meta.outputs.NEXT_PUBLIC_BASE_PATH }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max

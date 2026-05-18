@@ -12,8 +12,10 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { inArray } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess, type AccessMap, type BusinessRank } from '@/lib/auth/perms'
+import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { env } from '@/lib/env'
 
 export const dynamic = 'force-dynamic'
@@ -62,6 +64,31 @@ export default async function MePage() {
   const avatar = avatarUrl(session.id, session.avatar)
   const businessEntries = Object.entries(access.otter.businesses).sort(([a], [b]) => a.localeCompare(b))
   const voiceCount = access.squishy.voiceChannels.length
+
+  // Resolve voice channel IDs → display names. The auto_channels row carries
+  // both the bot's last-known manual name and the auto-name template's
+  // fallback; prefer manual, fall back to fallback, then to a generic label
+  // so the UI never renders an empty title. Best-effort: if squishyDb is
+  // unreachable we just fall through to the raw-ID rendering downstream.
+  const voiceNames = new Map<string, string>()
+  if (voiceCount > 0) {
+    try {
+      const rows = await squishyDb
+        .select({
+          voiceChannelId: squishySchema.autoChannels.voiceChannelId,
+          manualName: squishySchema.autoChannels.manualName,
+          fallbackName: squishySchema.autoChannels.fallbackName,
+        })
+        .from(squishySchema.autoChannels)
+        .where(inArray(squishySchema.autoChannels.voiceChannelId, access.squishy.voiceChannels))
+      for (const r of rows) {
+        const name = (r.manualName?.trim() || r.fallbackName?.trim() || '').trim()
+        if (name) voiceNames.set(r.voiceChannelId, name)
+      }
+    } catch {
+      // Leave the map empty — IDs render as their own label.
+    }
+  }
 
   return (
     <div className="p-6 sm:p-10 pt-16 md:pt-10">
@@ -121,17 +148,28 @@ export default async function MePage() {
               <div className="text-sm text-ink font-medium">{voiceCount}</div>
             </div>
             {voiceCount > 0 ? (
-              <ul className="flex flex-wrap gap-1.5">
-                {access.squishy.voiceChannels.map((id) => (
-                  <li key={id}>
-                    <Link
-                      href="/squishy/voice"
-                      className="inline-flex items-center rounded-md border border-line bg-bg-card px-2 py-0.5 text-xs font-mono text-ink-dim hover:text-ink"
-                    >
-                      {id}
-                    </Link>
-                  </li>
-                ))}
+              <ul className="flex flex-col gap-1.5">
+                {access.squishy.voiceChannels.map((id) => {
+                  const name = voiceNames.get(id)
+                  return (
+                    <li key={id}>
+                      <Link
+                        href="/squishy/voice"
+                        className="group flex items-center justify-between gap-3 rounded-lg border border-line bg-bg-card px-3 py-2 hover:border-accent hover:bg-bg-card/60 transition-colors"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-ink truncate">
+                            {name ?? <span className="font-mono">{id}</span>}
+                          </span>
+                          {name && (
+                            <span className="block text-[10px] font-mono text-ink-dim truncate">{id}</span>
+                          )}
+                        </span>
+                        <span aria-hidden className="text-ink-dim group-hover:text-accent transition-colors">→</span>
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             ) : (
               <div className="text-xs text-ink-dim">

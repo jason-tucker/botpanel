@@ -21,19 +21,16 @@ The app never hardcodes a domain. `PUBLIC_BASE_URL` env (set at deploy time) is 
 ### 5. Audit every state-changing action
 Every write API route calls `writeAudit(...)` with `actor`, `viewing` (impersonated user if View-As is on), before, after, `via: 'web'`. Mirror the existing bot audit patterns.
 
-### 6. Dev-first branching
-**All feature work targets the `dev` branch, not `main`.** Workflow:
+### 6. Main-only branching
+**All feature work targets `main` directly via PRs.** No long-lived intermediate branch.
 
-1. Branch from `dev` (or `origin/dev`), do the work, push, open PR with `gh pr create --base dev`.
-2. Merge to `dev` → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → the dev clone at `/home/botuser/projects/botpanel-dev/` auto-pulls via watchtower → verify on `https://bots.tucker.host/dev/`.
-3. When dev is healthy, open a **promotion PR**: `git checkout -b chore/promote-dev-to-main origin/main && git merge origin/dev --ff-only` (or `--no-ff` if you want a clear merge commit). Open with `gh pr create --base main --title "chore: promote dev to main"`. Merge it. CI builds `:latest` → prod deploys.
-4. After promotion, dev and main are equal again. No long-lived divergence.
+1. Branch from `main` (or `origin/main`), do the work, push, open PR with `gh pr create --base main`.
+2. CI runs `verify-schemas` + a full Docker build of both images on every PR (no GHCR push on PRs).
+3. Merge to `main` → CI builds + pushes `ghcr.io/jason-tucker/botpanel{,-web}:latest` → watchtower auto-pulls onto the prod clone within ~30s → verify on `https://bots.tucker.host/`.
 
-**Exception: prod-breaking hot fixes.** If prod is on fire and the fix is small + obvious (CI typo, env validation, etc.), target main directly via `gh pr create --base main` — but **immediately** open a second PR from main → dev to keep them in sync. Document the hot-fix nature in the PR body.
+**Bot repos follow the same model.** SquishyBot and OtterBot PRs also target `main` directly.
 
-**Bot repos are different.** SquishyBot and OtterBot have **no dev clone** (there's no second copy of the bot running on the VPS that consumes a `:dev` image). Their PRs continue to target `main` directly — dev-first there would just buffer work for no test gain.
-
-**Why this matters:** dev-first means broken code is caught on a stack that shares prod's redis + bot DBs but a separate Next.js + Caddy pair. Bugs that manifest only under a real auth session, real DB query, or real cloudflared route get caught on `/dev` instead of on the main URL your users hit.
+**Historical note:** botpanel used to have a `dev` branch + dev clone (`/home/botuser/projects/botpanel-dev/`, port 6081, served at `dev-bots.tucker.host`). The dev environment was removed entirely in PR (tracking issue #196) — the pre-merge CI on PRs gives the validation the dev clone used to provide, without the overhead of a second running stack. If you see `:dev` image references in old logs or the dev-bots subdomain in cloudflared, those are stale and can be cleaned up at any pace.
 
 ---
 
@@ -120,7 +117,7 @@ Bot schemas live in the bot repos. Panel uses **vendored copies** under `src/lib
 
 Two floating tags, two clones, one watchtower.
 
-- **`dev` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → watchtower auto-pulls → `/home/botuser/projects/botpanel-dev/` (port 6081, served at `bots.tucker.host/dev/`).
+- **`dev` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → watchtower auto-pulls → `/home/botuser/projects/botpanel-dev/` (port 6081, served at `dev-bots.tucker.host`).
 - **`main` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:latest` → watchtower auto-pulls → `/home/botuser/projects/botpanel/` (port 6080, served at `bots.tucker.host/`).
 
 Touched containers restart; untouched ones keep running. The dev clone is **not** a separate redis/db world — it shares prod's botpanel-net, redis, and bot Postgres. The separation is only at the Caddy + Next.js + landing layer (per-clone `NEXT_ALIAS` / `NEXT_HOST` env vars give each clone a unique alias on botpanel-net).

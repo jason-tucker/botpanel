@@ -1,8 +1,8 @@
 services:
   next:
     # Next.js dashboard. CI builds + pushes ghcr.io/<owner>/botpanel-web:latest
-    # on main, :dev on dev. NEXT_IMAGE picks which floating tag this clone
-    # tracks. No host port mapping — Caddy proxies via the docker network.
+    # on every push to main. No host port mapping — Caddy proxies via the
+    # docker network.
     image: ${NEXT_IMAGE:-ghcr.io/jason-tucker/botpanel-web:latest}
     build:
       context: ./web
@@ -20,10 +20,9 @@ services:
       - "3000"
     networks:
       botpanel-net:
-        # Per-clone alias so prod+dev clones can both put a "next" service on
-        # the shared botpanel-net without docker DNS round-robining between
-        # them. Defaults to "next-prod" for the main stack; dev .env overrides
-        # to "next-dev" so its Caddy can target the right container.
+        # Stable alias on botpanel-net so other services (Caddy here, bots
+        # elsewhere) reach the dashboard by name. Env-overrideable; the
+        # default just lets `docker compose up` work with no .env.
         aliases:
           - ${NEXT_ALIAS:-next-prod}
     labels:
@@ -35,8 +34,7 @@ services:
         max-file: "3"
 
   caddy:
-    # CI builds and pushes ghcr.io/<owner>/botpanel:latest on main, :dev on dev.
-    # Set BOT_IMAGE in .env to choose which floating tag this clone tracks.
+    # CI builds and pushes ghcr.io/<owner>/botpanel:latest on every push to main.
     image: ${BOT_IMAGE:-ghcr.io/jason-tucker/botpanel:latest}
     build:
       context: .
@@ -46,10 +44,8 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${PORT:-6080}
-      # Tells the Caddyfile which `next` to reverse-proxy. Defaults to
-      # next-prod for the main stack; dev .env overrides to next-dev.
-      # Without this, both clones' next services share the bare alias
-      # `next` on botpanel-net and docker DNS round-robins between them.
+      # Tells the Caddyfile which `next` alias to reverse-proxy. Matches the
+      # `next` service's botpanel-net alias above.
       NEXT_HOST: ${NEXT_HOST:-next-prod}
     # Bind to LOOPBACK ONLY on the host so cloudflared running on the host
     # (or anywhere else on the VPS) can reach us at localhost:${PORT}. This
@@ -88,25 +84,16 @@ services:
   #     tunnel --no-autoupdate run
   #
   # --network host means Cloudflare ingress rules pointing at `localhost:6080`
-  # reach Caddy (which binds 127.0.0.1:6080). It also lets ONE cloudflared
-  # route both prod and dev clones at the same time without docker DNS games.
+  # reach Caddy (which binds 127.0.0.1:6080).
 
   redis:
     # Single Redis used as both the event bus (bots → panel) AND the command
     # bus (panel → bots, V2+). Internal only — no host port.
     # Bots reach it as `redis:6379` over the shared botpanel-net network.
     #
-    # `profiles: [primary]` — only the prod clone brings this up. The dev
-    # clone shares this same redis instance over the botpanel-net network
-    # (CLAUDE.md: "dev clone is not a separate redis/db world"). Without
-    # this gate, both clones spin up their own `redis` container with the
-    # same network alias — DNS round-robins between them, and panel
-    # publishes from the dev clone end up on dev-redis while the bot is
-    # psubscribe'd to prod-redis. Every callBot() then times out.
-    #
-    # To start the prod clone: `COMPOSE_PROFILES=primary docker compose up -d`.
-    # Dev clone runs `docker compose up -d` without that env — redis is
-    # skipped and the panel/caddy resolve `redis` to the prod container.
+    # `profiles: [primary]` is leftover from a removed second-clone setup —
+    # the single stack now is the "primary." Start with:
+    #   COMPOSE_PROFILES=primary docker compose up -d
     profiles: ["primary"]
     image: redis:7-alpine
     restart: unless-stopped
@@ -130,8 +117,7 @@ services:
 
   watchtower:
     # Auto-pull-and-restart any container labeled `com.centurylinklabs.watchtower.enable=true`
-    # when its image tag (e.g. :latest, :dev) gets a new push to GHCR. Polls every 30s.
-    # Only this one watchtower is needed on the VPS — it serves prod AND dev clones.
+    # when its image tag (e.g. :latest) gets a new push to GHCR. Polls every 30s.
     #
     # NOTE: containrrr/watchtower is unmaintained; nickfedor/watchtower is the
     # actively-maintained fork with current Docker API support.
