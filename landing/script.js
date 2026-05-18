@@ -78,9 +78,8 @@ async function poll() {
   try {
     const ac = new AbortController()
     const tid = setTimeout(() => ac.abort(), TIMEOUT_MS)
-    // Relative path — works at both `/` (prod) and `/dev/` (dev clone behind
-    // path-based tunnel route). Caddy's `uri strip_prefix /dev` handles the
-    // dev-side rewrite.
+    // Relative path so the same landing serves correctly under each clone's
+    // own hostname (prod: bots.tucker.host, dev: dev-bots.tucker.host).
     const res = await fetch('./api/healthz', { cache: 'no-store', signal: ac.signal })
     clearTimeout(tid)
     if (res.ok) {
