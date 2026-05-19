@@ -45,6 +45,7 @@ import {
   DirectRevokeForm,
 } from './StaffApprovalControls'
 import { StartViewAsForm, ExitViewAsForm } from './ViewAsControls'
+import { PushOptIn } from '@/components/PushOptIn'
 
 export const dynamic = 'force-dynamic'
 
@@ -399,6 +400,9 @@ export default async function SudoHomePage() {
           active={Boolean(viewAsUserId) && access.actor.id !== access.viewing.id}
           viewingLabel={viewingLabel}
         />
+
+        {/* --- Web Push opt-in ---------------------------------------- */}
+        <PushOptIn />
 
         {/* --- Sudo Users --------------------------------------------- */}
         <section className="rounded-xl border border-line bg-bg-card overflow-hidden">

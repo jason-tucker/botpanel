@@ -19,6 +19,7 @@ import { getViewAsUserId } from '@/lib/auth/viewAs'
 import { resolveOneUsername } from '@/lib/userDisplay'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { env } from '@/lib/env'
+import { PushOptIn } from '@/components/PushOptIn'
 
 export const dynamic = 'force-dynamic'
 
@@ -366,6 +367,10 @@ export default async function MePage() {
             Manage Games →
           </Link>
         </section>
+
+        {/* Web Push opt-in — bot-owner only. Sudo users get the
+            same toggle on /sudo; we don't show it twice. */}
+        {access.botOwner && <PushOptIn />}
 
         <details className="rounded-2xl border border-line bg-bg-card p-5 text-sm">
           <summary className="cursor-pointer text-ink-dim hover:text-ink select-none">

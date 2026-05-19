@@ -68,6 +68,67 @@ internet → Cloudflare Tunnel → cloudflared container
 
    Re-deploy the panel (`scripts/botpanel update`) after setting the OAuth env vars.
 
+### Web Push notifications (VAPID setup)
+
+The panel can fire browser push notifications for new staff approvals
+and new `/report` submissions. The push subscribe button shows up on
+`/sudo` (all sudo + bot-owner) and on `/me` (bot-owner only). Setup is
+a one-time operator step:
+
+1. **Generate a keypair** (run inside the `web` workspace so the
+   `web-push` binary is on the path):
+
+   ```bash
+   pnpm --filter web exec web-push generate-vapid-keys
+   ```
+
+   The output is two long base64url strings:
+
+   ```
+   Public Key:  <88-char base64url>
+   Private Key: <44-char base64url>
+   ```
+
+2. **Add to `.env`** on the host. The public key must be set BOTH as
+   the server-side env (`VAPID_PUBLIC`) AND mirrored into the browser
+   bundle (`NEXT_PUBLIC_VAPID_PUBLIC`) — they must match exactly.
+
+   ```env
+   VAPID_PUBLIC=<public key>
+   VAPID_PRIVATE=<private key>
+   VAPID_SUBJECT=mailto:you@example.com
+   NEXT_PUBLIC_VAPID_PUBLIC=<public key>
+   ```
+
+3. **Restart the panel** so Next picks up the build-time public key:
+
+   ```bash
+   docker compose up -d --force-recreate next
+   ```
+
+4. **Subscribe**: open `/sudo` (or `/me` as bot-owner), click
+   "Enable notifications", accept the browser prompt. The button
+   flips to "Subscribed on this browser". Each device / browser is
+   tracked separately — enable on every machine you want paged on.
+
+If you skip the keys the subscribe button shows a "Server
+misconfigured" message and stays disabled. The dispatcher silently
+no-ops, so the staff-request + report flows still succeed normally.
+
+**iOS / Safari caveats.** Apple ships Web Push only inside installed
+PWAs on iOS. To enable it on iPhone/iPad: open the panel in Safari →
+Share → "Add to Home Screen" → open the panel from that home-screen
+icon → enable notifications there. Mobile-Safari-as-a-browser (not
+the home-screen app) will see "Not supported" on the opt-in card.
+Desktop macOS Safari and every Chromium/Firefox flavor work out of
+the box.
+
+The panel-owned `push_subscriptions` table is auto-created on first
+subscribe (lazy `CREATE TABLE IF NOT EXISTS` against
+`SQUISHY_DATABASE_URL`). Operators who prefer to apply schema
+explicitly can run the SQL in
+`web/src/lib/db/migrations/0001_push_subscriptions.sql` instead.
+
 ### Deploys
 
 GitHub Actions builds and pushes an image to GHCR on every push to `main`:

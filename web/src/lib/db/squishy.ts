@@ -1,7 +1,8 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { env } from '../env'
-import * as schema from './schema/squishy'
+import * as botSchema from './schema/squishy'
+import * as panelSchema from './schema/panel'
 
 /**
  * Drizzle client for SquishyBot's Postgres.
@@ -11,7 +12,14 @@ import * as schema from './schema/squishy'
  * client *lazy*: simply importing this module never opens a connection, and
  * any property access on `squishyDb` without the URL throws a clear error
  * pointing the operator at the missing env var.
+ *
+ * The client is keyed by the union of the vendored bot schema (every
+ * SquishyBot-owned table) and panel-owned schema (currently just
+ * `push_subscriptions`). Both groups live in the same Postgres instance
+ * — see `src/lib/db/schema/panel/pushSubscriptions.ts` for why.
  */
+
+const schema = { ...botSchema, ...panelSchema }
 
 type SquishyDb = ReturnType<typeof drizzle<typeof schema>>
 
@@ -37,4 +45,4 @@ export const squishyDb = new Proxy({} as SquishyDb, {
   },
 })
 
-export { schema as squishySchema }
+export { schema as squishySchema, botSchema as squishyBotSchema, panelSchema as squishyPanelSchema }

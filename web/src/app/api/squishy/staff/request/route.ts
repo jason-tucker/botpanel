@@ -19,6 +19,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
 import { callBot } from '@/lib/botrpc'
 import { writeAudit } from '@/lib/audit'
+import { notifyAll } from '@/lib/push/dispatch'
 import { DEPARTMENT_SLUGS, TIER_SLUGS } from '@/lib/squishyStaffRoles'
 
 export const runtime = 'nodejs'
@@ -205,6 +206,21 @@ export const POST = withAuth(
       },
       success: true,
     }).catch(() => {})
+
+    // Fire-and-forget Web Push to every sudo/bot-owner subscriber so
+    // an approver who's away from Discord sees the queue grow in
+    // real time. `void` so a push outage NEVER fails the
+    // already-succeeded staff request above.
+    const labelBits = [
+      reply.data.departmentLabel ?? deptSlug,
+      reply.data.tierLabel ?? tierSlug,
+    ].filter(Boolean)
+    const labelSummary = labelBits.length > 0 ? labelBits.join(' / ') : 'staff role'
+    void notifyAll(
+      'New staff approval',
+      `@${access.actor.username} requested ${labelSummary}`,
+      '/sudo',
+    )
 
     return NextResponse.json({ ok: true, data: { ...reply.data, autoApproved: false } })
   },
