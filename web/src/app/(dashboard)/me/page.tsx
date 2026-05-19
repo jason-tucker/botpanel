@@ -363,7 +363,7 @@ export default async function MePage() {
             href="/me/games"
             className="self-start inline-flex items-center gap-2 rounded-lg border border-line bg-bg-card2 px-3 py-2 text-sm text-ink hover:border-accent hover:bg-bg-card2/60 transition-colors"
           >
-            Manage on /me/games →
+            Manage Games →
           </Link>
         </section>
 
