@@ -89,18 +89,17 @@ a one-time operator step:
    Private Key: <44-char base64url>
    ```
 
-2. **Add to `.env`** on the host. The public key must be set BOTH as
-   the server-side env (`VAPID_PUBLIC`) AND mirrored into the browser
-   bundle (`NEXT_PUBLIC_VAPID_PUBLIC`) — they must match exactly.
+2. **Add to `.env`** on the host. Three vars; the browser fetches the
+   public key at runtime from `/api/push/config`, so no `NEXT_PUBLIC_`
+   mirror is needed.
 
    ```env
    VAPID_PUBLIC=<public key>
    VAPID_PRIVATE=<private key>
    VAPID_SUBJECT=mailto:you@example.com
-   NEXT_PUBLIC_VAPID_PUBLIC=<public key>
    ```
 
-3. **Restart the panel** so Next picks up the build-time public key:
+3. **Restart the panel** so it picks up the new env:
 
    ```bash
    docker compose up -d --force-recreate next
