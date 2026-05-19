@@ -11,7 +11,7 @@
  *                                   site settings.
  *   3. Not subscribed            — "Enable notifications" button
  *   4. Subscribed                — "Disable notifications" button
- *   5. Misconfigured (server)    — `NEXT_PUBLIC_VAPID_PUBLIC` not set
+ *   5. Misconfigured (server)    — VAPID keys not set on the panel
  *                                   at build time → nothing to send
  *                                   to the push service. Show an ops
  *                                   message instead of a dead button.
@@ -36,7 +36,23 @@ type ViewState =
   | { kind: 'idle' }
   | { kind: 'subscribed'; endpoint: string }
 
-const VAPID_PUBLIC: string | undefined = process.env.NEXT_PUBLIC_VAPID_PUBLIC
+/**
+ * Fetch the VAPID public key from `/api/push/config` at runtime. We can't
+ * use `NEXT_PUBLIC_VAPID_PUBLIC` because Next inlines `NEXT_PUBLIC_*` at
+ * build time — the CI image doesn't carry the value and rotating the key
+ * would require a rebuild. Runtime fetch means the operator just edits
+ * `.env` + restarts the container.
+ */
+async function fetchVapidPublicKey(): Promise<string | null> {
+  try {
+    const r = await fetch('/api/push/config', { credentials: 'same-origin' })
+    if (!r.ok) return null
+    const body = (await r.json()) as { publicKey?: string }
+    return body.publicKey && body.publicKey.length >= 80 ? body.publicKey : null
+  } catch {
+    return null
+  }
+}
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   // Web Push wants the applicationServerKey as a raw Uint8Array of
@@ -72,6 +88,9 @@ export function PushOptIn({ className }: { className?: string }) {
   const [state, setState] = useState<ViewState>({ kind: 'loading' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Runtime-fetched VAPID public key. Null until fetched; empty string
+  // sentinel = fetch failed / not configured.
+  const [vapidKey, setVapidKey] = useState<string | null>(null)
 
   // Detect support + existing subscription on mount.
   useEffect(() => {
@@ -90,10 +109,13 @@ export function PushOptIn({ className }: { className?: string }) {
         if (!cancelled) setState({ kind: 'unsupported', reason: 'no-notifications' })
         return
       }
-      if (!VAPID_PUBLIC) {
-        if (!cancelled) setState({ kind: 'misconfigured' })
+      const key = await fetchVapidPublicKey()
+      if (cancelled) return
+      if (!key) {
+        setState({ kind: 'misconfigured' })
         return
       }
+      setVapidKey(key)
       if (Notification.permission === 'denied') {
         if (!cancelled) setState({ kind: 'denied' })
         return
@@ -123,8 +145,13 @@ export function PushOptIn({ className }: { className?: string }) {
     setBusy(true)
     setError(null)
     try {
-      if (!VAPID_PUBLIC) {
-        setError('Operator has not set NEXT_PUBLIC_VAPID_PUBLIC.')
+      // Use the runtime-fetched key. If the mount-effect couldn't get
+      // one we'd be in `misconfigured` state and the button wouldn't be
+      // clickable, but defense-in-depth: re-fetch + bail if absent.
+      const key = vapidKey ?? (await fetchVapidPublicKey())
+      if (!key) {
+        setError('Server not configured for push (VAPID_PUBLIC unset).')
+        setState({ kind: 'misconfigured' })
         return
       }
       // Ask permission first. We don't try to be clever here — a
@@ -143,7 +170,7 @@ export function PushOptIn({ className }: { className?: string }) {
       await navigator.serviceWorker.ready
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+        applicationServerKey: urlBase64ToUint8Array(key),
       })
       const json = sub.toJSON()
       const csrf = await getCsrfToken()
@@ -178,7 +205,7 @@ export function PushOptIn({ className }: { className?: string }) {
     } finally {
       setBusy(false)
     }
-  }, [])
+  }, [vapidKey])
 
   const onUnsubscribe = useCallback(async () => {
     setBusy(true)
@@ -285,7 +312,7 @@ export function PushOptIn({ className }: { className?: string }) {
             Server isn&apos;t configured for push (operator must set{' '}
             <code className="font-mono">VAPID_PUBLIC</code> /{' '}
             <code className="font-mono">VAPID_PRIVATE</code> /{' '}
-            <code className="font-mono">NEXT_PUBLIC_VAPID_PUBLIC</code>).
+            <code className="font-mono">VAPID_SUBJECT</code>).
           </span>
         )}
       </div>

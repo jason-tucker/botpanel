@@ -56,9 +56,10 @@ const schema = z.object({
   // three must be set for push to actually fire; if any are missing
   // the subscribe routes return 503 and the dispatcher logs + no-ops
   // so the underlying write that triggered it never fails. The public
-  // key is also exposed to the browser via `NEXT_PUBLIC_VAPID_PUBLIC`
-  // in next.config — this server-side mirror keeps the dispatcher
-  // honest (we read from `env`, never from `process.env` directly).
+  // key is served to the browser via `GET /api/push/config` at
+  // runtime — DON'T use `NEXT_PUBLIC_VAPID_PUBLIC` because Next inlines
+  // `NEXT_PUBLIC_*` at build time and a CI image baked without the
+  // value can't be fixed without a rebuild.
   VAPID_PUBLIC: z.string().min(80).optional(),
   VAPID_PRIVATE: z.string().min(40).optional(),
   // RFC 8292 §2: the `sub` claim of the VAPID JWT. Must be a
@@ -66,14 +67,6 @@ const schema = z.object({
   // operator at if something goes wrong. Defaults to a sentinel
   // mailto so a misconfigured env doesn't crash on boot.
   VAPID_SUBJECT: z.string().default('mailto:botpanel@localhost'),
-
-  // Mirror of VAPID_PUBLIC exposed to the browser via Next's
-  // `NEXT_PUBLIC_*` convention. The PushOptIn component reads this
-  // through `process.env.NEXT_PUBLIC_VAPID_PUBLIC` directly (Next
-  // inlines it at build time); validating here just means a missing
-  // value fails fast at boot instead of silently producing a 0-byte
-  // applicationServerKey at the browser.
-  NEXT_PUBLIC_VAPID_PUBLIC: z.string().min(80).optional(),
 
   // ─── Build metadata ───────────────────────────────────────────────
   GIT_SHA: z.string().default('dev'),
