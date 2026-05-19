@@ -86,6 +86,22 @@ One stack on the VPS, served at `bots.tucker.host` via Cloudflare Tunnel → `lo
 |---|---|---|---|
 | `main` | `6080` | `:latest` | `/home/botuser/projects/botpanel` |
 
+### Env vars
+
+The Next.js panel reads its config from `web/src/lib/env.ts` (zod-validated at boot). The notable ones:
+
+| Var | Required for | Notes |
+|---|---|---|
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | OAuth login | From the Discord dev portal. |
+| `SESSION_SECRET` | Session cookies | ≥ 32 chars. JWT signing key. |
+| `OAUTH_TOKEN_KEY` | AEAD-encrypting refresh tokens | 32 bytes as 64 hex chars. Generate with `openssl rand -hex 32`. If unset, the OAuth callback skips refresh-token persistence and logs a warning — login still works but silent token refresh won't. Required in any deploy that wants refresh-token storage. |
+| `PUBLIC_BASE_URL` | Cookie domain / OAuth redirect / CSRF origin | Source of truth for the public URL. |
+| `BOT_OWNER_ID` | Bot-owner gate | Defaults to the original owner snowflake. |
+| `SQUISHY_DATABASE_URL` / `OTTER_DATABASE_URL` | DB reads/writes | Lazy — panel boots without them for landing-only flows. |
+| `REDIS_URL` | Bot RPC + audit | Defaults to `redis://redis:6379` on `botpanel-net`. |
+| `BOTPANEL_RPC_SECRET` | HMAC envelope for bot RPC | ≥ 32 chars. Shared with bot repos. |
+| `AUDIT_HASH_SALT` | IP/UA hashing in audit rows | Set to a long random value in prod. |
+
 ### Files
 
 - `landing/` — static landing page (HTML + CSS + JS + 502 fallback).
