@@ -26,6 +26,7 @@ import { redirect } from 'next/navigation'
 import { desc, eq } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
+import { getViewAsUserId } from '@/lib/auth/viewAs'
 import { env } from '@/lib/env'
 import { squishyDb } from '@/lib/db/squishy'
 import {
@@ -34,7 +35,7 @@ import {
   reportLog,
 } from '@/lib/db/schema/squishy'
 import { relTime } from '@/lib/util/format'
-import { resolveUsernames } from '@/lib/userDisplay'
+import { resolveUsernames, resolveOneUsername } from '@/lib/userDisplay'
 import { UserChip } from '@/components/UserChip'
 import { AddSudoUserForm, RevokeButton } from './SudoUserControls'
 import {
@@ -43,6 +44,7 @@ import {
   DirectGrantForm,
   DirectRevokeForm,
 } from './StaffApprovalControls'
+import { StartViewAsForm, ExitViewAsForm } from './ViewAsControls'
 
 export const dynamic = 'force-dynamic'
 
@@ -234,6 +236,30 @@ function settled<T>(r: PromiseSettledResult<T>): T | null {
   return r.status === 'fulfilled' ? r.value : null
 }
 
+function ViewAsCard({
+  active,
+  viewingLabel,
+}: {
+  active: boolean
+  viewingLabel: string | null
+}) {
+  return (
+    <section className="rounded-xl border border-line bg-bg-card overflow-hidden">
+      <header className="flex items-baseline justify-between gap-3 px-4 py-3 border-b border-line">
+        <h2 className="text-lg font-semibold">View As</h2>
+        <p className="text-xs text-ink-dim">
+          Render the panel as another user — capabilities, sidebar, /me.
+          Audit rows still record your real account as the actor.
+        </p>
+      </header>
+      {active && viewingLabel ? (
+        <ExitViewAsForm viewingLabel={viewingLabel} />
+      ) : null}
+      <StartViewAsForm />
+    </section>
+  )
+}
+
 function NotAuthorizedCard({ isSudo }: { isSudo: boolean }) {
   return (
     <div className="p-6 sm:p-10 pt-16 md:pt-10">
@@ -264,9 +290,45 @@ export default async function SudoHomePage() {
   const session = await getSession()
   if (!session) redirect('/api/auth/login')
 
-  const access = await resolveAccess(session)
+  // Resolve access against the View-As cookie so e.g. if a sudo is
+  // already impersonating someone we still treat THEM as sudo for
+  // gating this page (resolveAccess silently ignores impersonation for
+  // anyone who isn't actually sudo/owner, so this is safe).
+  const viewAsUserId = await getViewAsUserId()
+  const access = await resolveAccess(session, viewAsUserId ? { viewAsUserId } : undefined)
+
+  // The View-As card is the one section available to non-owner sudos —
+  // they need a way to start/stop impersonation just as much as the
+  // owner does. Sudo authority for this surface is the spec gate
+  // (issue #204).
+  const canViewAs = access.botOwner || access.squishy.sudo
+
+  // Resolve the viewed user's display label for the "currently viewing"
+  // banner inside the card. Falls back to the raw ID if the bot RPC
+  // doesn't have a cached username for them.
+  let viewingLabel: string | null = null
+  if (viewAsUserId && access.actor.id !== access.viewing.id) {
+    const resolved = await resolveOneUsername('squishy', access.viewing.id)
+    viewingLabel = resolved?.displayName ?? resolved?.username ?? access.viewing.id
+  }
+
   if (!access.botOwner) {
-    return <NotAuthorizedCard isSudo={access.squishy.sudo} />
+    // Non-owner sudos still get the View-As card here — it's the only
+    // entry surface for impersonation in MVP. The rest of /sudo stays
+    // owner-only (see NotAuthorizedCard).
+    return (
+      <div className="p-6 sm:p-10 pt-16 md:pt-10">
+        <div className="max-w-6xl mx-auto flex flex-col gap-6">
+          {canViewAs && (
+            <ViewAsCard
+              active={Boolean(viewAsUserId) && access.actor.id !== access.viewing.id}
+              viewingLabel={viewingLabel}
+            />
+          )}
+          <NotAuthorizedCard isSudo={access.squishy.sudo} />
+        </div>
+      </div>
+    )
   }
 
   // Parallel fetch — `allSettled` so one failed read can't poison the
@@ -331,6 +393,12 @@ export default async function SudoHomePage() {
             stays owner-only.
           </p>
         </header>
+
+        {/* --- View As ------------------------------------------------- */}
+        <ViewAsCard
+          active={Boolean(viewAsUserId) && access.actor.id !== access.viewing.id}
+          viewingLabel={viewingLabel}
+        />
 
         {/* --- Sudo Users --------------------------------------------- */}
         <section className="rounded-xl border border-line bg-bg-card overflow-hidden">
