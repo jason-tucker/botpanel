@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { exchangeCode, fetchMe, fetchGuildIds } from '@/lib/auth/discord'
-import { mintSession, setSessionCookie } from '@/lib/auth/session'
+import { mintSession, setSessionCookie, newJti } from '@/lib/auth/session'
+import { encryptToken } from '@/lib/auth/tokenCrypto'
+import { sessions as panelSessions } from '@/lib/db/schema/panel'
 import { env } from '@/lib/env'
 
 export const dynamic = 'force-dynamic'
@@ -44,6 +46,36 @@ export async function GET(req: Request) {
       fetchMe(tokens.access_token),
       fetchGuildIds(tokens.access_token),
     ])
+    // Mint a server-side session id, then encrypt + persist the refresh
+    // token under it. Best-effort: a DB failure here (or a missing
+    // `OAUTH_TOKEN_KEY`) MUST NOT block login — we'll log a warning and
+    // proceed with the JWT-only flow. The follow-up cost is just that
+    // we can't refresh access tokens silently for this user; they'll
+    // re-OAuth when their access token expires.
+    const jti = newJti()
+    try {
+      if (env.OAUTH_TOKEN_KEY && env.SQUISHY_DATABASE_URL) {
+        const enc = encryptToken(tokens.refresh_token)
+        const { squishyDb } = await import('@/lib/db/squishy')
+        await squishyDb.insert(panelSessions).values({
+          id: jti,
+          userId: user.id,
+          refreshTokenCiphertext: enc.ciphertext,
+          refreshTokenIv: enc.iv,
+          refreshTokenTag: enc.tag,
+          refreshTokenKeyVersion: enc.keyVersion,
+        })
+      } else {
+        console.warn(
+          '[auth.callback] OAUTH_TOKEN_KEY or SQUISHY_DATABASE_URL not set — skipping refresh-token persistence',
+        )
+      }
+    } catch (err) {
+      // Don't surface to the user; the JWT cookie still authenticates
+      // them for this session's 3-day TTL. Operators will see this in
+      // logs and can fix the DB or env without disrupting users.
+      console.warn('[auth.callback] failed to persist encrypted refresh token (non-fatal)', err)
+    }
     const token = await mintSession({
       id: user.id,
       username: user.global_name ?? user.username,
@@ -54,6 +86,7 @@ export async function GET(req: Request) {
       // 3-day TTL — users moving in/out of guilds within that window
       // just see slightly stale sidebar gating until they log back in.
       guildIds,
+      jti,
     })
     await setSessionCookie(token)
     return NextResponse.redirect(homeUrl())

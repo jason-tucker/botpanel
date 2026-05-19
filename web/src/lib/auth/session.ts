@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { SignJWT, jwtVerify } from 'jose'
+import { randomBytes } from 'node:crypto'
 import { env } from '@/lib/env'
 
 /**
@@ -28,7 +29,26 @@ export interface Session {
    * logins always set this from `https://discord.com/api/users/@me/guilds`.
    */
   guildIds?: string[]
+  /**
+   * Server-side session id, 24 random hex bytes. Mirrored into the
+   * `panel_sessions` table as the primary key so admin tooling
+   * (e.g. `/api/admin/auth/logout-all`) can identify and exclude the
+   * actor's own row when wiping every other session. Optional because
+   * pre-V3-3 JWTs don't have it — readers treat `undefined` as "no DB
+   * row to look up" (everything degrades to the existing JWT-only flow).
+   */
+  jti?: string
   issuedAt: number
+}
+
+/**
+ * Generate a server-side session id. 24 bytes (192 bits) of CSPRNG entropy
+ * is overkill for cookie collision resistance but matches the `requestId`
+ * length used elsewhere in this codebase (`src/lib/botrpc.ts`), so any
+ * later log-grepping is uniform.
+ */
+export function newJti(): string {
+  return randomBytes(24).toString('hex')
 }
 
 function key(): Uint8Array {
