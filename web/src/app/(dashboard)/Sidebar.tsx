@@ -49,6 +49,17 @@ function avatarUrl(session: SessionLike): string | null {
   return `https://cdn.discordapp.com/avatars/${session.id}/${session.avatar}.png?size=128`
 }
 
+/**
+ * Build an avatar URL from `access.viewing`. The dashboard layout fills
+ * `viewing.avatar` with the bot-resolved FULL CDN URL when impersonation
+ * is active (see `(dashboard)/layout.tsx`), so we use it directly here.
+ * Falls back to null when the bot RPC didn't have a cached avatar — the
+ * UI then renders the initial-letter placeholder.
+ */
+function viewingAvatarUrl(viewing: { avatar: string | null }): string | null {
+  return viewing.avatar
+}
+
 function NavItem({
   href,
   label,
@@ -196,7 +207,18 @@ export function Sidebar({
   }
 
   const close = () => setOpen(false)
-  const avatar = avatarUrl(session)
+  // View-As: when the resolved `viewing` differs from the actor, the
+  // sidebar shows the VIEWED user's avatar + name (with an "(as)" tag
+  // so the actor doesn't lose track of whose seat they're sitting in).
+  // Auth flow still keys off `session` for things like the logout form
+  // — that's the actor's session.
+  const viewAsActive = access.actor.id !== access.viewing.id
+  const avatar = viewAsActive
+    ? viewingAvatarUrl(access.viewing)
+    : avatarUrl(session)
+  const displayName = viewAsActive
+    ? access.viewing.username || access.viewing.id
+    : session.username
 
   // The actual rendered sidebar contents — reused by desktop fixed + mobile
   // drawer so we don't drift between the two.
@@ -298,17 +320,28 @@ export function Sidebar({
               width={32}
               height={32}
               priority
-              className="w-8 h-8 rounded-full border border-line"
+              className={`w-8 h-8 rounded-full border ${viewAsActive ? 'border-err' : 'border-line'}`}
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-bg-card2 border border-line flex items-center justify-center text-xs text-ink-dim">
-              {session.username.slice(0, 1).toUpperCase()}
+            <div className={`w-8 h-8 rounded-full bg-bg-card2 border ${viewAsActive ? 'border-err' : 'border-line'} flex items-center justify-center text-xs text-ink-dim`}>
+              {displayName.slice(0, 1).toUpperCase()}
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <div className="text-sm text-ink truncate">{session.username}</div>
-            {access.botOwner && (
-              <div className="text-[10px] uppercase tracking-wider text-ok">Bot owner</div>
+            <div className="text-sm text-ink truncate">
+              {displayName}
+              {viewAsActive && (
+                <span className="ml-1 text-[10px] uppercase tracking-wider text-err align-middle">(as)</span>
+              )}
+            </div>
+            {viewAsActive ? (
+              <div className="text-[10px] text-ink-dim truncate">
+                actor: @{session.username}
+              </div>
+            ) : (
+              access.botOwner && (
+                <div className="text-[10px] uppercase tracking-wider text-ok">Bot owner</div>
+              )
             )}
           </div>
         </div>

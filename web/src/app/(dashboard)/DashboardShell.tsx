@@ -16,6 +16,7 @@
  */
 import type { AccessMap } from '@/lib/auth/perms'
 import { Sidebar } from './Sidebar'
+import { ViewAsBanner } from './ViewAsBanner'
 
 type SessionLike = {
   id: string
@@ -48,8 +49,20 @@ export function DashboardShell({
   squishyGuildId: string | null
   children: React.ReactNode
 }) {
+  // View-As is active when the resolved viewing user differs from the
+  // actor. The layout has already swapped `access.viewing` to the
+  // bot-resolved display (username + avatar) if the cookie was set —
+  // see `(dashboard)/layout.tsx`.
+  const viewAsActive = access.actor.id !== access.viewing.id
+
   return (
     <div className="min-h-dvh bg-bg">
+      {viewAsActive && (
+        <ViewAsBanner
+          viewingUsername={access.viewing.username || access.viewing.id}
+          actorUsername={access.actor.username}
+        />
+      )}
       <Sidebar
         access={access}
         squishyGuildId={squishyGuildId}

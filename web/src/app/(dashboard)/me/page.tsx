@@ -15,6 +15,8 @@ import { redirect } from 'next/navigation'
 import { inArray } from 'drizzle-orm'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess, type AccessMap, type BusinessRank } from '@/lib/auth/perms'
+import { getViewAsUserId } from '@/lib/auth/viewAs'
+import { resolveOneUsername } from '@/lib/userDisplay'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { env } from '@/lib/env'
 
@@ -60,8 +62,38 @@ export default async function MePage() {
   // here means a stale layout cache can never leak this page.
   if (!session) redirect('/api/auth/login')
 
-  const access: AccessMap = await resolveAccess(session)
-  const avatar = avatarUrl(session.id, session.avatar)
+  // Honor View-As. The `(dashboard)` layout already resolved access with
+  // the cookie, but the page resolves again — pages own their gates, the
+  // layout's value is for the chrome. resolveAccess() silently ignores
+  // the cookie for non-sudo callers, so this is safe.
+  const viewAsUserId = await getViewAsUserId()
+  const access: AccessMap = await resolveAccess(
+    session,
+    viewAsUserId ? { viewAsUserId } : undefined,
+  )
+
+  // When View-As is active, the identity card at the top should show the
+  // VIEWED user, not the actor. The capability list below it already
+  // reflects the viewed user (resolveAccess gave us their capabilities).
+  // The actor's identity remains visible in the sidebar + banner.
+  const viewAsActive = access.actor.id !== access.viewing.id
+  let identityId = session.id
+  let identityUsername = session.username
+  let identityAvatarUrl = avatarUrl(session.id, session.avatar)
+  if (viewAsActive) {
+    identityId = access.viewing.id
+    // resolveAccess fills `viewing.username` blank — fetch from the bot
+    // for a friendly chip. Falls back to the raw ID if not cached.
+    const resolved = await resolveOneUsername('squishy', access.viewing.id)
+    identityUsername =
+      resolved?.displayName ?? resolved?.username ?? access.viewing.id
+    // The bot returns a fully-qualified avatar URL (or null). Reuse it
+    // directly rather than rebuilding from a hash — we don't have the
+    // hash on hand here.
+    identityAvatarUrl = resolved?.avatarUrl ?? null
+  }
+
+  const avatar = identityAvatarUrl
   const businessEntries = Object.entries(access.otter.businesses).sort(([a], [b]) => a.localeCompare(b))
   const voiceCount = access.squishy.voiceChannels.length
 
@@ -114,13 +146,25 @@ export default async function MePage() {
             />
           ) : (
             <div className="w-16 h-16 rounded-full bg-bg-card2 border border-line flex items-center justify-center text-xl text-ink-dim">
-              {session.username.slice(0, 1).toUpperCase()}
+              {identityUsername.slice(0, 1).toUpperCase()}
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-lg text-ink truncate">{session.username}</div>
-            <div className="text-sm text-ink-dim font-mono truncate">{session.id}</div>
-            {access.botOwner && (
+            <div className="font-medium text-lg text-ink truncate">
+              {identityUsername}
+              {viewAsActive && (
+                <span className="ml-2 text-[10px] uppercase tracking-wider text-err align-middle">
+                  (as)
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-ink-dim font-mono truncate">{identityId}</div>
+            {viewAsActive && (
+              <div className="text-xs text-ink-dim mt-1">
+                Your real account: <span className="font-mono">@{session.username}</span>
+              </div>
+            )}
+            {access.botOwner && !viewAsActive && (
               <div className="inline-flex items-center gap-2 mt-2 rounded-full bg-bg-card2 border border-line px-3 py-1 text-xs">
                 <span className="w-2 h-2 rounded-full bg-ok" /> Bot owner
               </div>
