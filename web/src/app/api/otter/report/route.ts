@@ -13,6 +13,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
 import { callBot } from '@/lib/botrpc'
 import { writeAudit } from '@/lib/audit'
+import { notifyAll } from '@/lib/push/dispatch'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -102,6 +103,15 @@ export const POST = withAuth(
       after: { title: parsed.title, type: parsed.type },
       success: true,
     }).catch(() => {})
+
+    // Fire-and-forget Web Push to subscribers so an operator with the
+    // panel closed still gets paged on a new report. `void` so a
+    // push-service hiccup never fails the underlying bot-side write.
+    void notifyAll(
+      `New report (otter): ${parsed.type}`,
+      `${parsed.title} — by @${access.actor.username}`,
+      '/sudo',
+    )
 
     return NextResponse.json({ ok: true, data: reply.data })
   },
