@@ -9,6 +9,15 @@ const schema = z.object({
   DISCORD_CLIENT_ID: z.string().min(1).optional(),
   DISCORD_CLIENT_SECRET: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(32).optional(),
+  // AEAD key for Discord refresh-token encryption at rest. 32 bytes as 64
+  // hex chars. Optional in the schema (so existing auth-less / lab boots
+  // don't break) but `tokenCrypto.encryptToken` throws if unset — production
+  // deploys that perform an OAuth callback MUST set it. Generate with:
+  //   openssl rand -hex 32
+  OAUTH_TOKEN_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, 'OAUTH_TOKEN_KEY must be 64 hex chars (32 bytes)')
+    .optional(),
 
   // ─── Bot owner ─────────────────────────────────────────────────────
   // Single-user fallback if no Discord Application Team is configured.
