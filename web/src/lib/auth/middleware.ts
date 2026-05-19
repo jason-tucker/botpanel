@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from './session'
 import { resolveAccess, type AccessMap } from './perms'
 import { verifyCsrfToken } from './csrf'
+import { getViewAsUserIdFromRequest } from './viewAs'
 
 export type AuthRequirement = 'any' | 'sudo' | 'botOwner'
 
@@ -99,7 +100,13 @@ export function withAuth<T extends unknown[]>(
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const access = await resolveAccess(session)
+    // Read the View-As cookie off the request. `resolveAccess` is the
+    // gatekeeper: if the actor isn't sudo / bot-owner the impersonation
+    // is silently ignored (no privilege escalation), and self-View-As
+    // short-circuits to the real identity. Worst-case for a forged
+    // cookie on a non-sudo session is a no-op.
+    const viewAsUserId = getViewAsUserIdFromRequest(req)
+    const access = await resolveAccess(session, viewAsUserId ? { viewAsUserId } : undefined)
 
     const passes =
       required === 'any'

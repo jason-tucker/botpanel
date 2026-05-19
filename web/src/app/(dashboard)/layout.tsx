@@ -17,6 +17,8 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
+import { getViewAsUserId } from '@/lib/auth/viewAs'
+import { resolveOneUsername } from '@/lib/userDisplay'
 import { env } from '@/lib/env'
 import { DashboardShell } from './DashboardShell'
 
@@ -26,7 +28,31 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await getSession()
   if (!session) redirect('/')
 
-  const access = await resolveAccess(session)
+  // View-As: if the cookie is present we resolve access AS the viewed
+  // user — capability checks downstream see the viewed user's caps, audit
+  // hooks still record the actor (`access.actor`). Cookie reads are
+  // free; the gate inside `resolveAccess` decides whether to honor it
+  // (sudo / bot-owner only — everyone else silently sees their own caps).
+  const viewAsUserId = await getViewAsUserId()
+  const access = await resolveAccess(session, viewAsUserId ? { viewAsUserId } : undefined)
+
+  // When View-As is live, fetch the viewed user's display name + avatar
+  // from the bot so the banner + sidebar can render a friendly chip
+  // instead of a raw snowflake. `resolveAccess` left those fields blank
+  // on purpose (it doesn't have Discord identity, only the ID). Best
+  // effort — falls through to the raw ID if the RPC isn't available.
+  let viewing = access.viewing
+  if (access.actor.id !== access.viewing.id) {
+    const resolved = await resolveOneUsername('squishy', access.viewing.id)
+    if (resolved) {
+      viewing = {
+        id: access.viewing.id,
+        username: resolved.username ?? resolved.displayName ?? access.viewing.id,
+        avatar: resolved.avatarUrl ?? null,
+      }
+    }
+  }
+  const accessWithViewing = viewing === access.viewing ? access : { ...access, viewing }
 
   // Squishy is single-guild — we pass GUILD_ID down to the client-side
   // sidebar so it can compare against `session.guildIds` and hide the
@@ -36,7 +62,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const squishyGuildId = env.GUILD_ID ?? null
 
   return (
-    <DashboardShell access={access} session={session} squishyGuildId={squishyGuildId}>
+    <DashboardShell access={accessWithViewing} session={session} squishyGuildId={squishyGuildId}>
       {children}
     </DashboardShell>
   )
