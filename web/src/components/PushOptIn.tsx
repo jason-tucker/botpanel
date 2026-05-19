@@ -38,14 +38,21 @@ type ViewState =
 
 const VAPID_PUBLIC: string | undefined = process.env.NEXT_PUBLIC_VAPID_PUBLIC
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   // Web Push wants the applicationServerKey as a raw Uint8Array of
   // the URL-safe base64 public key. The browser does NOT accept the
   // string directly — every tutorial trips on this.
+  //
+  // The explicit `Uint8Array<ArrayBuffer>` return type (vs the default
+  // `Uint8Array<ArrayBufferLike>`) is required by TS 6.0 so the result
+  // can be passed to `pushManager.subscribe`'s `applicationServerKey`
+  // slot, which expects the narrow `BufferSource` (excludes
+  // `SharedArrayBuffer`-backed views).
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const raw = atob(base64)
-  const out = new Uint8Array(raw.length)
+  const buffer = new ArrayBuffer(raw.length)
+  const out = new Uint8Array(buffer)
   for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i)
   return out
 }
