@@ -30,7 +30,7 @@ import { env } from '@/lib/env'
 import { squishyDb } from '@/lib/db/squishy'
 import { botSettings, games, userGamePrefs } from '@/lib/db/schema/squishy'
 import { discordChannelUrl, formatDuration, relTime } from '@/lib/util/format'
-import { AddGameForm, EditGameForm, RemoveGameButton } from './GamesWriteUI'
+import { AddGameForm, EditGameForm, PostLfgButton, RemoveGameButton } from './GamesWriteUI'
 
 export const dynamic = 'force-dynamic'
 
@@ -295,7 +295,10 @@ export default async function SquishyGamesPage() {
                           {relTime(g.createdAt)}
                         </td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">
-                          <RemoveGameButton id={g.id} name={g.name} />
+                          <div className="inline-flex items-start gap-2">
+                            <PostLfgButton gameId={g.id} gameName={g.name} />
+                            <RemoveGameButton id={g.id} name={g.name} />
+                          </div>
                         </td>
                       </tr>
                     )

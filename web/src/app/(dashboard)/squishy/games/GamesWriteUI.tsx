@@ -651,3 +651,163 @@ export function RemoveGameButton({ id, name }: { id: string; name: string }) {
     </span>
   )
 }
+
+// ---------------------------------------------------------------------------
+// <PostLfgButton /> — panel-side trigger for /play.
+//
+// Mirrors the slash command's [message] + [ping] options. The actual LFG
+// panel is built + sent by squishybot (so it's byte-identical to the
+// slash version with Help / Notify Toggle buttons and all). We just POST
+// to /api/squishy/play with gameId + optional message + ping flag.
+//
+// UX: collapsed button until clicked; click → small inline panel with
+// textarea + checkbox + Post / Cancel. After a successful POST the
+// inline form auto-closes and shows a one-line confirmation with the
+// channel ID; on error it shows a red banner with the bot's error
+// token (cooldown surfaces remainingSec as a friendly wait time).
+// ---------------------------------------------------------------------------
+
+const btnPost =
+  'inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50'
+
+function formatWait(remainingSec: number): string {
+  const m = Math.floor(remainingSec / 60)
+  const s = remainingSec % 60
+  return m > 0 ? `${m}m ${s}s` : `${s}s`
+}
+
+function localizePlayError(err: string, remainingSec?: number): string {
+  switch (err) {
+    case 'cooldown':
+      return remainingSec
+        ? `🕒 Cooldown — try again in ${formatWait(remainingSec)}.`
+        : '🕒 You ran /play for this game too recently. Try again later.'
+    case 'game-not-active':
+      return '❌ This game is archived or hidden — can\'t LFG it right now.'
+    case 'game-no-channel':
+      return '❌ This game has no channel configured. Set one in the editor first.'
+    case 'channel-unreachable':
+    case 'channel-not-text':
+      return '❌ The game\'s channel is unreachable or not a text channel.'
+    case 'bot-missing-perm':
+      return '❌ Bot is missing Send Messages in the game\'s channel.'
+    case 'rpc-not-configured':
+    case 'timeout':
+      return '❌ Bot is offline or RPC is misconfigured. Try again in a minute.'
+    case 'message-too-long':
+      return '❌ Message is too long (500 char max).'
+    case 'game-not-found':
+      return '❌ Game not found — was it just removed?'
+    case 'guild-unavailable':
+      return '❌ Guild unavailable — bot may be reconnecting.'
+    default:
+      return `❌ ${err}`
+  }
+}
+
+export function PostLfgButton({ gameId, gameName }: { gameId: string; gameName: string }) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [ping, setPing] = useState(true)
+  const [result, setResult] = useState<
+    | { kind: 'ok'; messageId: string; channelId: string }
+    | { kind: 'err'; text: string }
+    | null
+  >(null)
+
+  async function submit() {
+    if (busy) return
+    setBusy(true)
+    setResult(null)
+    const trimmed = message.trim()
+    const body = { gameId, ping, ...(trimmed ? { message: trimmed } : {}) }
+    const res = await requestJson<{ channelId?: string; messageId?: string }>(
+      '/api/squishy/play',
+      'POST',
+      body,
+    )
+    if (res.ok) {
+      const data = res.data ?? {}
+      setResult({
+        kind: 'ok',
+        messageId: data.messageId ?? '',
+        channelId: data.channelId ?? '',
+      })
+      setMessage('')
+      setPing(true)
+      // Auto-collapse the form after a short delay so the success line lingers.
+      setTimeout(() => setOpen(false), 1500)
+    } else {
+      // requestJson returns the API's `error` token in res.error; remainingSec
+      // is on the actual response body which we don't surface through that
+      // helper. Re-fetching just to read it is overkill — use the textual
+      // fallback when the cooldown token comes through without seconds.
+      setResult({ kind: 'err', text: localizePlayError(res.error) })
+    }
+    setBusy(false)
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={btnPost}
+        title={`Post LFG for ${gameName}`}
+      >
+        📣 Post LFG
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2 min-w-[16rem] p-2 rounded-lg border border-accent/30 bg-bg-card2 text-left">
+      <div className="text-[11px] uppercase tracking-wider text-ink-dim">
+        Post LFG — {gameName}
+      </div>
+      <textarea
+        rows={2}
+        maxLength={500}
+        placeholder="Optional message (e.g. casual 1hr, no mic)"
+        className={`${inputCls} resize-none`}
+        value={message}
+        onChange={e => setMessage(e.target.value)}
+        disabled={busy}
+      />
+      <label className="flex items-center gap-2 text-xs">
+        <input
+          type="checkbox"
+          checked={ping}
+          onChange={e => setPing(e.target.checked)}
+          disabled={busy}
+        />
+        <span>Ping the game role</span>
+      </label>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={busy}
+          className={btnPost}
+        >
+          {busy ? 'Posting…' : '📣 Post'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpen(false); setResult(null) }}
+          disabled={busy}
+          className={btnGhost}
+        >
+          Cancel
+        </button>
+      </div>
+      {result?.kind === 'ok' && (
+        <p className="text-[11px] text-ok">✅ Posted in channel <span className="font-mono">{result.channelId}</span></p>
+      )}
+      {result?.kind === 'err' && (
+        <p className="text-[11px] text-err">{result.text}</p>
+      )}
+    </div>
+  )
+}
