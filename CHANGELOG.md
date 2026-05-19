@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Panel-side cache-invalidate publisher — `publishInvalidate(bot, {table, key?})`.** First piece of V3-1: writes that mutate a bot-cached row now publish an HMAC-signed event on `bot.<botname>.settings.invalidate` so the bot can reload its in-memory cache without restart. Wired into `PUT/DELETE /api/squishy/settings/[key]` (covers every `bot_settings` key: welcome/goodbye, staff role mappings, channel IDs, social-feed config, etc). Fire-and-forget — a redis hiccup or missing `BOTPANEL_RPC_SECRET` never fails the underlying write. Other write surfaces (`games`, `hub_channels`, `auto_thread_channels`, `social_feeds`, otter business tables) will adopt the helper in follow-up PRs. Closes #33 once bot subscribers ship in matching PRs on squishybot + otterbot.
+
 ### Ops
 - **`dev` branch + dev clone removed entirely. Workflow is now main-only.** All future work targets `main` directly via PRs; no long-lived intermediate branch. `.github/workflows/deploy.yml` no longer triggers on `dev`. `CLAUDE.md` rule 6 rewritten. Both prior dev-related Ops entries below (subdomain migration, basePath removal) are superseded — left in the log for historical accuracy. Issue #191 (subdomain migration) closed as moot. Tracking: #196.
 - **(superseded by removal above)** Dev clone briefly served at `https://dev-bots.tucker.host/` (its own subdomain) instead of `bots.tucker.host/dev/` (path prefix). Cloudflared ingress, `NEXT_PUBLIC_BASE_PATH=/dev` removal, Caddyfile / landing/script.js comment cleanup, CLAUDE.md URL updates all shipped — then the entire dev environment was removed.

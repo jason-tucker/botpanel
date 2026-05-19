@@ -32,6 +32,7 @@ import { eq } from 'drizzle-orm'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
+import { publishInvalidate } from '@/lib/events/invalidate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -198,6 +199,8 @@ export const PUT = withAuth(
       console.warn('[squishy/settings PUT] audit write failed (write succeeded)', err)
     })
 
+    publishInvalidate('squishy', { table: 'bot_settings', key })
+
     return NextResponse.json({ success: true, key, value })
   },
   {
@@ -279,6 +282,8 @@ export const DELETE = withAuth(
     }).catch((err) => {
       console.warn('[squishy/settings DELETE] audit write failed (delete succeeded)', err)
     })
+
+    publishInvalidate('squishy', { table: 'bot_settings', key })
 
     return NextResponse.json({ success: true, key, cleared: true })
   },
