@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`/squishy/roles` reaction-role cards: "Expire now" button on temporary, non-expired rows.** Flip-to-confirm, sudo-gated. POSTs `/api/squishy/reaction-roles/[id]/expire` which calls the squishybot `rxnroles.expire` RPC verb — same teardown as `rxnroles.delete`, but the bot logs it as `action:'expired'` so audit forensics keeps "panel forced early expiry" distinct from "panel deleted". Useful when a game-night message's timer was set too far out. Audited as `rxnroles.expired`. Closes the last unwired squishybot verb gap on the panel.
+
 ### Fixed
 - **Web Push: VAPID public key now served from a runtime API route instead of `NEXT_PUBLIC_VAPID_PUBLIC`.** The Next.js `NEXT_PUBLIC_*` convention inlines values at build time, so the CI image baked without VAPID_PUBLIC set had `undefined` inlined into the client bundle — the operator couldn't fix it by editing `.env` + restarting. Replaced the build-time inline with a new `GET /api/push/config` route that returns `{ publicKey: env.VAPID_PUBLIC }`; the `<PushOptIn>` component fetches on mount. Operators now need exactly three vars (`VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_SUBJECT`) and a container restart is enough to rotate keys. Closes #218.
 

@@ -28,6 +28,9 @@
  *     → flat-object collapse can't faithfully represent it. Handles its own
  *     CSRF token fetch, error banner, and submit disabling.
  *   - `<DeleteReactionRoleButton />`— flip-to-confirm per-card delete button.
+ *   - `<ExpireReactionRoleButton />`— same flow as delete but routes through
+ *     `rxnroles.expire` so the bot log line records intent as "expired".
+ *     Only rendered for temporary, non-expired rows.
  */
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
@@ -711,6 +714,99 @@ export function DeleteReactionRoleButton({ id }: { id: string }) {
         className={btnDanger}
       >
         {submitting ? 'Deleting…' : 'Confirm delete'}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setArmed(false)
+          setError(null)
+        }}
+        disabled={submitting}
+        className={btnGhost}
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Flip-to-confirm "Expire now" button. Same teardown as Delete (the
+ * Discord message + DB rows go away), but the bot's log records it as
+ * `action:'expired'` rather than `'deleted'` so audit forensics keeps
+ * "panel forced early expiry" distinct from "panel deleted".
+ */
+export function ExpireReactionRoleButton({ id }: { id: string }) {
+  const router = useRouter()
+  const [armed, setArmed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const onExpire = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const token = await fetchCsrfToken()
+      const headers: Record<string, string> = {}
+      if (token) headers['x-csrf-token'] = token
+      const res = await fetch(`/api/squishy/reaction-roles/${id}/expire`, {
+        method: 'POST',
+        headers,
+        credentials: 'same-origin',
+      })
+      if (!res.ok) {
+        let msg = `Request failed (${res.status})`
+        try {
+          const parsed = await res.json()
+          if (parsed && typeof parsed === 'object') {
+            const e = (parsed as { error?: unknown }).error
+            if (typeof e === 'string') msg = e
+          }
+        } catch {
+          // leave default msg
+        }
+        setError(msg)
+        return
+      }
+      setArmed(false)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!armed) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setError(null)
+          setArmed(true)
+        }}
+        className="inline-flex items-center px-2 py-1 text-xs rounded-md border border-warn/40 bg-warn/10 text-warn hover:bg-warn/20 transition-colors"
+        title="Force this temporary reaction-role message to expire now"
+      >
+        Expire now
+      </button>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2">
+      {error && (
+        <span className="text-xs text-err" role="alert">
+          {error}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onExpire}
+        disabled={submitting}
+        className="inline-flex items-center px-2 py-1 text-xs rounded-md border border-warn/40 bg-warn/10 text-warn hover:bg-warn/20 transition-colors"
+      >
+        {submitting ? 'Expiring…' : 'Confirm expire'}
       </button>
       <button
         type="button"

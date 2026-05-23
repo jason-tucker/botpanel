@@ -73,6 +73,7 @@ import {
   CreateReactionRoleForm,
   DeleteReactionRoleButton,
   EditColorRoleForm,
+  ExpireReactionRoleButton,
   RemoveAutoJoinButton,
   RemoveColorRoleButton,
 } from './RolesWriteUI'
@@ -508,7 +509,10 @@ function ReactionTab({
                   </a>
                 )}
                 {canWrite && (
-                  <div className={messageUrl ? '' : 'ml-auto'}>
+                  <div className={`flex items-center gap-2 ${messageUrl ? '' : 'ml-auto'}`}>
+                    {isTemporary && !expired && (
+                      <ExpireReactionRoleButton id={m.id} />
+                    )}
                     <DeleteReactionRoleButton id={m.id} />
                   </div>
                 )}
