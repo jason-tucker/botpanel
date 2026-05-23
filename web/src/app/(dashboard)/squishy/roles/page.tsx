@@ -58,6 +58,7 @@ import { env } from '@/lib/env'
 import { squishyDb } from '@/lib/db/squishy'
 import {
   autoJoinRoles,
+  botSettings,
   colorRoles,
   reactionRoleMessages,
   reactionRoleMappings,
@@ -110,6 +111,68 @@ function parseTab(raw: string | string[] | undefined): TabKey {
   const v = Array.isArray(raw) ? raw[0] : raw
   if (v === 'color' || v === 'reaction') return v
   return 'join'
+}
+
+// Hard ceiling on temporary reaction-role duration — matches the bot's
+// `HARD_MAX_EXPIRES_MIN` in src/services/rpc/handlers/rxnroles/create.ts.
+// The operator-tunable `rxnroles.max_expires_minutes` setting can only
+// lower this, never raise it.
+const RXN_HARD_MAX_MIN = 60 * 24 * 30
+const RXN_DEFAULT_FALLBACK_MIN = 60
+
+/**
+ * Load the two `rxnroles.*` knobs the create form respects:
+ *   - `rxnroles.max_expires_minutes` caps the "expires in N minutes" input
+ *     (bot revalidates with the same key, so a stale panel page can't
+ *     bypass the cap).
+ *   - `rxnroles.default_expires_minutes` is the pre-fill for the input —
+ *     operator picks the value most temporary messages should have.
+ *
+ * Both are best-effort: a DB hiccup falls back to the hardcoded defaults
+ * so the form still renders.
+ */
+async function loadRxnRolesSettings(): Promise<{
+  maxExpiresMin: number
+  defaultExpiresMin: number
+}> {
+  try {
+    const rows = await squishyDb
+      .select()
+      .from(botSettings)
+      .where(
+        inArray(botSettings.key, [
+          'rxnroles.max_expires_minutes',
+          'rxnroles.default_expires_minutes',
+        ]),
+      )
+    const byKey = new Map(rows.map((r) => [r.key, r.value]))
+    const parseInt1 = (raw: string | undefined, fallback: number, max: number) => {
+      if (raw === undefined) return fallback
+      const n = Number(raw)
+      if (!Number.isFinite(n)) return fallback
+      const t = Math.trunc(n)
+      if (t < 1) return 1
+      if (t > max) return max
+      return t
+    }
+    const maxExpiresMin = parseInt1(
+      byKey.get('rxnroles.max_expires_minutes'),
+      RXN_HARD_MAX_MIN,
+      RXN_HARD_MAX_MIN,
+    )
+    const defaultExpiresMin = parseInt1(
+      byKey.get('rxnroles.default_expires_minutes'),
+      RXN_DEFAULT_FALLBACK_MIN,
+      maxExpiresMin,
+    )
+    return { maxExpiresMin, defaultExpiresMin }
+  } catch (err) {
+    console.warn('[squishy/roles] rxnroles settings lookup failed', err)
+    return {
+      maxExpiresMin: RXN_HARD_MAX_MIN,
+      defaultExpiresMin: RXN_DEFAULT_FALLBACK_MIN,
+    }
+  }
 }
 
 async function loadAutoJoin(): Promise<AutoJoinRow[] | null> {
@@ -396,16 +459,25 @@ function ReactionTab({
   rows,
   guildId,
   canWrite,
+  maxExpiresMin,
+  defaultExpiresMin,
 }: {
   rows: ReactionMessageRow[] | null
   guildId: string | null
   canWrite: boolean
+  maxExpiresMin: number
+  defaultExpiresMin: number
 }) {
   if (rows === null) return <UnavailableCard what="reaction-role messages" />
   if (rows.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        {canWrite && <CreateReactionRoleForm />}
+        {canWrite && (
+          <CreateReactionRoleForm
+            maxExpiresMin={maxExpiresMin}
+            defaultExpiresMin={defaultExpiresMin}
+          />
+        )}
         <EmptyCard>
           No reaction-role messages. Build one via the{' '}
           <strong>New message</strong> button above, or via{' '}
@@ -419,7 +491,12 @@ function ReactionTab({
   }
   return (
     <div className="flex flex-col gap-4">
-      {canWrite && <CreateReactionRoleForm />}
+      {canWrite && (
+        <CreateReactionRoleForm
+          maxExpiresMin={maxExpiresMin}
+          defaultExpiresMin={defaultExpiresMin}
+        />
+      )}
       {rows.map((m) => {
         const channelUrl = discordChannelUrl(guildId, m.channelId)
         const messageUrl = discordMessageUrl(guildId, m.channelId, m.messageId)
@@ -598,20 +675,27 @@ export default async function SquishyRolesPage({
   const sp = await searchParams
   const tab = parseTab(sp.tab)
 
-  // Fire all three loads in parallel; each one's `try/catch` returns `null`
-  // on failure so a single broken table doesn't doom the others. We use
-  // Promise.allSettled defensively in case a future loader is added that
-  // doesn't catch internally — the page should still render.
-  const [autoJoinRes, colorsRes, reactionsRes] = await Promise.allSettled([
-    loadAutoJoin(),
-    loadColors(),
-    loadReactionMessages(),
-  ])
+  // Fire all four loads in parallel; each one's `try/catch` returns `null`
+  // (or a default object) on failure so a single broken table doesn't doom
+  // the others. We use Promise.allSettled defensively in case a future
+  // loader is added that doesn't catch internally — the page should still
+  // render.
+  const [autoJoinRes, colorsRes, reactionsRes, rxnSettingsRes] =
+    await Promise.allSettled([
+      loadAutoJoin(),
+      loadColors(),
+      loadReactionMessages(),
+      loadRxnRolesSettings(),
+    ])
   const autoJoinRows =
     autoJoinRes.status === 'fulfilled' ? autoJoinRes.value : null
   const colorRows = colorsRes.status === 'fulfilled' ? colorsRes.value : null
   const reactionRows =
     reactionsRes.status === 'fulfilled' ? reactionsRes.value : null
+  const rxnSettings =
+    rxnSettingsRes.status === 'fulfilled'
+      ? rxnSettingsRes.value
+      : { maxExpiresMin: RXN_HARD_MAX_MIN, defaultExpiresMin: RXN_DEFAULT_FALLBACK_MIN }
 
   const guildId = env.GUILD_ID ?? null
 
@@ -670,6 +754,8 @@ export default async function SquishyRolesPage({
             rows={reactionRows}
             guildId={guildId}
             canWrite={allowed}
+            maxExpiresMin={rxnSettings.maxExpiresMin}
+            defaultExpiresMin={rxnSettings.defaultExpiresMin}
           />
         )}
 

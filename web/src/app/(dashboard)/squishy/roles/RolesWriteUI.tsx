@@ -22,11 +22,15 @@
  *   - `<AddColorRoleForm />`        — top-of-tab add form on the color tab.
  *   - `<EditColorRoleForm />`       — collapsible per-card label/sortOrder editor.
  *   - `<RemoveColorRoleButton />`   — per-card remove.
- *   - `<CreateReactionRoleForm />`  — Wave 7b builder for new reaction-role
- *     messages. Bespoke fetch flow (rather than `<ServerForm>`) because the
- *     payload carries a dynamic `mappings[]` array — `ServerForm`'s FormData
- *     → flat-object collapse can't faithfully represent it. Handles its own
- *     CSRF token fetch, error banner, and submit disabling.
+ *   - `<CreateReactionRoleForm maxExpiresMin defaultExpiresMin />` — Wave 7b
+ *     builder for new reaction-role messages. Bespoke fetch flow (rather
+ *     than `<ServerForm>`) because the payload carries a dynamic `mappings[]`
+ *     array — `ServerForm`'s FormData → flat-object collapse can't faithfully
+ *     represent it. Handles its own CSRF token fetch, error banner, and
+ *     submit disabling. The two `*ExpiresMin` props come from the bot_settings
+ *     keys `rxnroles.max_expires_minutes` / `rxnroles.default_expires_minutes`
+ *     resolved server-side in `page.tsx`; the bot revalidates the cap on
+ *     submit so a stale page can't bypass an operator-lowered limit.
  *   - `<DeleteReactionRoleButton />`— flip-to-confirm per-card delete button.
  *   - `<ExpireReactionRoleButton />`— same flow as delete but routes through
  *     `rxnroles.expire` so the bot log line records intent as "expired".
@@ -317,20 +321,27 @@ const SNOWFLAKE_RE = /^\d{15,25}$/
 const MIN_MAPPINGS = 1
 const MAX_MAPPINGS = 20
 const MAX_BODY_LEN = 2000
-const MAX_EXPIRES_MIN = 60 * 24 * 30
 
 function newDraftMapping(): DraftMapping {
   return { emoji: '', roleId: '' }
 }
 
-export function CreateReactionRoleForm() {
+export function CreateReactionRoleForm({
+  maxExpiresMin,
+  defaultExpiresMin,
+}: {
+  maxExpiresMin: number
+  defaultExpiresMin: number
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [channelId, setChannelId] = useState('')
   const [body, setBody] = useState('')
   const [mappings, setMappings] = useState<DraftMapping[]>([newDraftMapping()])
   const [isTemporary, setIsTemporary] = useState(false)
-  const [expiresInMinutes, setExpiresInMinutes] = useState('60')
+  const [expiresInMinutes, setExpiresInMinutes] = useState(
+    String(defaultExpiresMin),
+  )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -339,9 +350,9 @@ export function CreateReactionRoleForm() {
     setBody('')
     setMappings([newDraftMapping()])
     setIsTemporary(false)
-    setExpiresInMinutes('60')
+    setExpiresInMinutes(String(defaultExpiresMin))
     setError(null)
-  }, [])
+  }, [defaultExpiresMin])
 
   // Cheap client-side gate. The API revalidates everything — we just
   // want to fail fast on obvious shape errors instead of a round-trip.
@@ -367,9 +378,9 @@ export function CreateReactionRoleForm() {
         !Number.isFinite(n) ||
         !Number.isInteger(n) ||
         n < 1 ||
-        n > MAX_EXPIRES_MIN
+        n > maxExpiresMin
       ) {
-        return `Expires must be an integer 1..${MAX_EXPIRES_MIN} minutes.`
+        return `Expires must be an integer 1..${maxExpiresMin} minutes.`
       }
     }
     return null
@@ -603,14 +614,18 @@ export function CreateReactionRoleForm() {
                   type="number"
                   step={1}
                   min={1}
-                  max={MAX_EXPIRES_MIN}
+                  max={maxExpiresMin}
                   className={inputCls}
                   value={expiresInMinutes}
                   onChange={(e) => setExpiresInMinutes(e.target.value)}
                 />
                 <p className="text-[11px] text-ink-dim">
-                  1..{MAX_EXPIRES_MIN} (= 30 days). On expiry the bot deletes
-                  the message and strips granted roles.
+                  1..{maxExpiresMin} minutes. Tune via{' '}
+                  <code className="font-mono">rxnroles.max_expires_minutes</code>{' '}
+                  /{' '}
+                  <code className="font-mono">rxnroles.default_expires_minutes</code>.
+                  On expiry the bot deletes the message and strips granted
+                  roles.
                 </p>
               </div>
             )}

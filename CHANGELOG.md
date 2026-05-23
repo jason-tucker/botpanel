@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Reaction-role builder reads two new `bot_settings` knobs.** The "expires in N minutes" input on `/squishy/roles?tab=reaction` now sources its cap from `rxnroles.max_expires_minutes` (hard ceiling = 30 days) and its default value from `rxnroles.default_expires_minutes` (fallback 60 min). The bot revalidates the cap on `rxnroles.create` against the same setting, so a stale panel page can't bypass an operator-lowered limit. Loader is best-effort — DB hiccup falls back to the hardcoded defaults. Help text under the input now points at the two key names so operators know where to tune. Pairs with the matching `getIntSetting` helper + bot-side enforcement in squishybot.
 - **`/squishy/roles` reaction-role cards: "Expire now" button on temporary, non-expired rows.** Flip-to-confirm, sudo-gated. POSTs `/api/squishy/reaction-roles/[id]/expire` which calls the squishybot `rxnroles.expire` RPC verb — same teardown as `rxnroles.delete`, but the bot logs it as `action:'expired'` so audit forensics keeps "panel forced early expiry" distinct from "panel deleted". Useful when a game-night message's timer was set too far out. Audited as `rxnroles.expired`. Closes the last unwired squishybot verb gap on the panel.
 
 ### Fixed
