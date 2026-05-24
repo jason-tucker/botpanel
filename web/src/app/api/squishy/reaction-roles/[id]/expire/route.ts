@@ -53,12 +53,13 @@ export const POST = withAuth(
       )
     }
 
-    let row: { messageId: string; channelId: string } | undefined
+    let row: { messageId: string; channelId: string; expiresAt: Date | null } | undefined
     try {
       const rows = await squishyDb
         .select({
           messageId: reactionRoleMessages.messageId,
           channelId: reactionRoleMessages.channelId,
+          expiresAt: reactionRoleMessages.expiresAt,
         })
         .from(reactionRoleMessages)
         .where(eq(reactionRoleMessages.id, rowId))
@@ -91,6 +92,38 @@ export const POST = withAuth(
         errorMessage: 'not-found',
       }).catch(() => {})
       return NextResponse.json({ error: 'not found' }, { status: 404 })
+    }
+
+    // Expire is only valid for messages that were created with a TTL.
+    // The UI only renders the button when `isTemporary && !expired`, but
+    // a sudo could craft a direct fetch — guard server-side so the audit
+    // trail can't be polluted with `rxnroles.expired` events against
+    // permanent messages (audit-integrity). See #229.
+    if (row.expiresAt === null) {
+      await writeAudit({
+        bot: 'squishy',
+        action: 'rxnroles.expired',
+        actor: access.actor,
+        viewing: access.viewing,
+        targetType: 'reaction_role_messages',
+        targetId: rowId,
+        success: false,
+        errorMessage: 'not-temporary',
+      }).catch(() => {})
+      return NextResponse.json({ error: 'not-temporary' }, { status: 400 })
+    }
+    if (row.expiresAt.getTime() < Date.now()) {
+      await writeAudit({
+        bot: 'squishy',
+        action: 'rxnroles.expired',
+        actor: access.actor,
+        viewing: access.viewing,
+        targetType: 'reaction_role_messages',
+        targetId: rowId,
+        success: false,
+        errorMessage: 'already-expired',
+      }).catch(() => {})
+      return NextResponse.json({ error: 'already-expired' }, { status: 409 })
     }
 
     const reply = await callBot('squishy', 'rxnroles.expire', {

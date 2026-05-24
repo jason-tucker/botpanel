@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.1] — 2026-05-24
+
+### Fixed
+- **Security (#229): `/api/squishy/reaction-roles/[id]/expire` now verifies the row is temporary and not already expired before forwarding to the bot.** The UI only renders `ExpireReactionRoleButton` when `isTemporary && !expired`, but the POST route used to resolve `messageId` and call `rxnroles.expire` unconditionally — a sudo crafting a direct `fetch()` could tear down a permanent message and have it audited as `rxnroles.expired`, defeating the verb's "distinct from delete" forensics value. The route now selects `expiresAt` alongside `messageId` / `channelId`; returns `400 'not-temporary'` when `expiresAt === null` and `409 'already-expired'` when the timestamp is in the past. Both rejections write a `success: false` audit row so the attempt is still recorded. Mirror bot-side guard ships separately in squishybot.
+
 ## [Unreleased]
 
 ### Added
