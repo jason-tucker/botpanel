@@ -125,6 +125,17 @@ export const POST = withAuth(
       position?: number
     }
 
+    // Allow-list the fields stored in the audit row — never trust the bot
+    // reply to control what lands in long-retained logs. See #228.
+    const auditAfter = {
+      id: typeof data.id === 'string' ? data.id : null,
+      name: typeof data.name === 'string' ? data.name : null,
+      color: typeof data.color === 'number' ? data.color : null,
+      hoist: typeof data.hoist === 'boolean' ? data.hoist : null,
+      mentionable: typeof data.mentionable === 'boolean' ? data.mentionable : null,
+      position: typeof data.position === 'number' ? data.position : null,
+    }
+
     await writeAudit({
       bot: 'squishy',
       action: 'discord.role_created',
@@ -133,7 +144,7 @@ export const POST = withAuth(
       targetType: 'discord_role',
       targetId: data.id ?? null,
       before: null,
-      after: data,
+      after: auditAfter,
       success: true,
     }).catch(() => {})
 

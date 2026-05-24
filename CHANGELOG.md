@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.4] — 2026-05-24
+
+### Fixed
+- **Security (#228): allow-list the `after` payload written to audit rows from the three Discord-create routes.** `/api/squishy/discord/create-channel`, `/api/squishy/discord/create-role`, and `/api/squishy/games/provision` previously stored the entire bot reply (`after: data`) verbatim — a bot bug or compromise could have stuffed arbitrary blobs into the long-retained `audit_logs` table. Each route now constructs an explicit `auditAfter` object containing only the fields needed for audit replay (`id` / `name` / `type` / `parentId` / `position` for channels; `id` / `name` / `color` / `hoist` / `mentionable` / `position` for roles; `gameId` / `channelId` / `viewRoleId` / `pingRoleId` for provision) with per-field type guards. Audit row size is now bounded regardless of what the bot returns.
+
+---
+
 ## [0.1.3] — 2026-05-24
 
 ### Fixed
