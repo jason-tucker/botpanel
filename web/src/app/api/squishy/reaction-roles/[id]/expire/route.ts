@@ -99,6 +99,16 @@ export const POST = withAuth(
     // a sudo could craft a direct fetch — guard server-side so the audit
     // trail can't be polluted with `rxnroles.expired` events against
     // permanent messages (audit-integrity). See #229.
+    //
+    // NOTE (#238): the `success: false` writeAudit calls below land in
+    // the `writeSquishyAudit` no-table branch (audit.ts:106-117) — they
+    // emit a console.info breadcrumb, NOT a DB row, because the
+    // vendored squishy schema has no `audit_logs` table yet (same as
+    // every `rxnroles.expired` success row today). Once a generic
+    // `squishy.audit_logs` lands and `writeSquishyAudit` is updated to
+    // insert into it, these rejection paths persist automatically with
+    // no change here. The `success: false` arg shape is correct and
+    // forward-compatible; only the storage backend is breadcrumb-only.
     if (row.expiresAt === null) {
       await writeAudit({
         bot: 'squishy',

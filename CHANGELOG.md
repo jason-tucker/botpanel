@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.3] — 2026-05-24
+
+### Fixed
+- **Security (#238): clarify that `/api/squishy/reaction-roles/[id]/expire` rejection audit is breadcrumb-only today.** PR #235 (issue #229) added `success: false` audit calls on the `not-temporary` and `already-expired` rejection paths and claimed they're persisted. Reality: `writeSquishyAudit` routes only `setting.changed`/`setting.cleared` to a DB table; every `rxnroles.*` audit (success AND rejection) falls into the no-table branch and is a `console.info` breadcrumb only — the vendored squishy schema has no `audit_logs` table yet. Added a `NOTE (#238)` block in the route explaining the storage backend is breadcrumb-only today, that the `success: false` arg shape is forward-compatible, and that the rejections will persist automatically once a generic `squishy.audit_logs` table lands. No behavior change; comment-only correction of the prior PR's overstated claim.
+
+_v0.1.3 · <pending>_
+
+---
+
 ## [0.1.2] — 2026-05-24
 
 ### Fixed
