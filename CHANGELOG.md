@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.2] — 2026-05-24
+
+### Fixed
+- **Security (#230): `/api/squishy/reaction-roles/[id]/{expire,delete}` now share a per-actor rate-limit bucket.** Both routes previously used the default path-keyed bucket — but the path includes the dynamic `[id]` UUID, so the per-actor budget was effectively `10 × (#message-ids) × 2 verbs`. A sudo with N message IDs could issue `20·N` writes/min across the two verbs. Both routes now pass an explicit `key: (_req, access) => `${access.actor.id}:rxnroles-write`` so they share a single 10/min/actor bucket. Tightens, doesn't regress, the pre-existing `/delete` budget.
+
+---
+
 ## [0.1.1] — 2026-05-24
 
 ### Fixed

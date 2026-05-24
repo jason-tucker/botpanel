@@ -168,6 +168,15 @@ export const POST = withAuth(
   {
     require: 'sudo',
     csrf: true,
-    rateLimit: { points: 10, perSeconds: 60 },
+    // Shared bucket with /delete — default path-keyed key would have
+    // included the dynamic UUID, multiplying the per-actor budget by
+    // (#message-ids × 2 verbs). Both rxnroles write verbs now share a
+    // single per-actor bucket keyed on `${actor.id}:rxnroles-write`.
+    // See #230.
+    rateLimit: {
+      points: 10,
+      perSeconds: 60,
+      key: (_req, access) => `${access.actor.id}:rxnroles-write`,
+    },
   },
 )
