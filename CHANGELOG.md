@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - **Security (#239): three Discord-create routes now use the validated `auditAfter.id` / `auditIds.gameId` as the audit row's `targetId` instead of raw `data.id` / `data.gameId` from the bot reply.** PR #234 (issue #228) added the `auditAfter` allow-list for the JSON blob but the top-level `targetId` column kept reading `data.id ?? null` straight from the bot. A bot returning a non-string id (`{id: 123}`) would write a non-string into a typed-string column — DB cast error or silent coercion. One-line change in each of `web/src/app/api/squishy/discord/create-channel/route.ts`, `create-role/route.ts`, and `games/provision/route.ts`. Reuses the already-validated `typeof === 'string' ? : null` guard from `auditAfter` so non-string ids now drop to `null` and the audit row still writes successfully.
 
-_v0.1.5 · <pending>_
+_v0.1.5 · f631783_
 
 ---
 
