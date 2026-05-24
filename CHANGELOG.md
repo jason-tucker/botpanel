@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.6] — 2026-05-24
+
+### Fixed
+- **Security (#240): inline "+ Create" flow on `/squishy/games` now surfaces the orphaned Discord resource id when the PATCH step 2 fails.** The two-step `create-{channel,role}` + `PATCH /api/squishy/games/[id]` flow could leave an orphaned Discord channel/role on the guild if step 2 failed (network blip, validation, rate-limit) — the user just saw "linking failed" and would often retry, creating a second orphan. Auto-cleanup isn't viable because no panel `discord.delete-{channel,role}` endpoint exists yet and a tab-close mid-cleanup would re-orphan anyway. Smallest cheapest fix per the issue (option 2): the failure path now includes the orphan resource id + an explicit instruction to delete it manually in Discord (or paste it into the field above and Save to link it). Operator no longer retries blindly; orphan no longer silently burns a per-guild role/channel cap slot.
+
+_v0.1.6 · <pending>_
+
+---
+
 ## [0.1.5] — 2026-05-24
 
 ### Fixed
