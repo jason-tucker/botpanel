@@ -33,6 +33,7 @@ import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { publishInvalidate } from '@/lib/events/invalidate'
+import { validateNumericSetting } from '@/lib/squishy/settings-registry'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -148,6 +149,24 @@ export const PUT = withAuth(
         { errorMessage: `value must be <= ${VALUE_MAX} chars` },
         { status: 400 },
       )
+    }
+
+    // Per-key numeric bounds (#237). Mirrors squishybot#130's NUMERIC_SETTINGS
+    // — see `@/lib/squishy/settings-registry`. No-op for non-numeric keys.
+    const numericErr = validateNumericSetting(key, value)
+    if (numericErr) {
+      await writeAudit({
+        bot: 'squishy',
+        action: 'setting.changed',
+        targetType: 'bot_settings',
+        targetId: key,
+        actor: access.actor, viewing: access.viewing,
+        before: null,
+        after: null,
+        success: false,
+        errorMessage: numericErr,
+      }).catch(() => {})
+      return NextResponse.json({ error: numericErr }, { status: 400 })
     }
 
     const before = await readExistingValue(key)
