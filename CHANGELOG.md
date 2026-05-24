@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.1] — 2026-05-24
+
+### Fixed
+- **Security (#237): `PUT /api/squishy/settings/[key]` now enforces per-key numeric bounds via a panel-side `NUMERIC_SETTINGS` registry.** The generic settings PUT only validated key shape + non-empty string + ≤4096 chars — a sudo could persist garbage like `play.default_cooldown_seconds = "hello"` or `voice.cleanup_delay_ms = "-1"` from the documented operator UX. squishybot#130 added defense-in-depth on the bot's sudo modal but the panel (the higher-volume write surface) had no equivalent. New `src/lib/squishy/settings-registry.ts` mirrors the bot's `NUMERIC_SETTINGS` const (only `key` + `min` + `max` — labels/descriptions stay bot-side) and exposes `validateNumericSetting(key, value)` which the route calls after the existing string checks. Non-numeric keys (e.g. `welcome.message_template`) fall through unaffected. Drift between the two lists is a SECURITY bug and the registry comment + `// #237` route comment point at the bot source for grep-ability. Rejections audit with `success: false` like the other validation paths.
+
+_v0.1.1 · <pending>_
+
+---
+
 ## [Unreleased]
 
 ### Fixed
