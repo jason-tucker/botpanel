@@ -161,6 +161,16 @@ export const POST = withAuth(
       pingRoleId?: string
     }
 
+    // Allow-list the bot-returned fields stored in the audit row — never
+    // trust the bot reply to control what lands in long-retained logs.
+    // See #228.
+    const auditIds = {
+      gameId: typeof data.gameId === 'string' ? data.gameId : null,
+      channelId: typeof data.channelId === 'string' ? data.channelId : null,
+      viewRoleId: typeof data.viewRoleId === 'string' ? data.viewRoleId : null,
+      pingRoleId: typeof data.pingRoleId === 'string' ? data.pingRoleId : null,
+    }
+
     await writeAudit({
       bot: 'squishy',
       action: 'game.provisioned',
@@ -169,7 +179,7 @@ export const POST = withAuth(
       targetType: 'games',
       targetId: data.gameId ?? null,
       before: null,
-      after: { ...submitted, ...data },
+      after: { ...submitted, ...auditIds },
       success: true,
     }).catch(() => {})
 

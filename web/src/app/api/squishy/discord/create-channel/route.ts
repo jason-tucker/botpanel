@@ -149,6 +149,16 @@ export const POST = withAuth(
       position?: number
     }
 
+    // Allow-list the fields stored in the audit row — never trust the bot
+    // reply to control what lands in long-retained logs. See #228.
+    const auditAfter = {
+      id: typeof data.id === 'string' ? data.id : null,
+      name: typeof data.name === 'string' ? data.name : null,
+      type: typeof data.type === 'string' ? data.type : null,
+      parentId: typeof data.parentId === 'string' ? data.parentId : null,
+      position: typeof data.position === 'number' ? data.position : null,
+    }
+
     await writeAudit({
       bot: 'squishy',
       action: 'discord.channel_created',
@@ -157,7 +167,7 @@ export const POST = withAuth(
       targetType: 'discord_channel',
       targetId: data.id ?? null,
       before: null,
-      after: data,
+      after: auditAfter,
       success: true,
     }).catch(() => {})
 
