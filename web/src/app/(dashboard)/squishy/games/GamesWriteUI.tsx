@@ -230,7 +230,20 @@ function InlineCreateButton({
               { [patchField]: newId },
             )
             if (!patched.ok) {
-              setError(`Discord ${kind} created, but linking it to the game failed: ${patched.error}`)
+              // ORPHAN WARNING (#240): step 1 succeeded but step 2 didn't, so
+              // the Discord resource exists on the guild without a games-row
+              // link. We don't auto-cleanup because no panel delete endpoint
+              // exists for discord.{channel,role} yet, and a tab-close mid-
+              // cleanup would re-orphan anyway. Surface the resource id +
+              // explicit "go delete it in Discord" instruction so the operator
+              // doesn't retry blindly (which would orphan a second one) and
+              // doesn't burn a Discord per-guild role/channel cap slot
+              // forever.
+              setError(
+                `Discord ${kind} created (id ${newId}) but linking it to the game failed: ${patched.error}. ` +
+                `The ${kind} is now orphaned on the guild — delete it manually in Discord before retrying, ` +
+                `or paste the id into the field above and Save to link it.`,
+              )
               return
             }
             // 3) refresh the server page so the row re-renders with the new link.
