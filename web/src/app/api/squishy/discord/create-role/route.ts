@@ -21,6 +21,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { callBot } from '@/lib/botrpc'
+import { checkGamesWriteGuildLimits } from '@/lib/limits/gamesProvision'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -79,6 +80,16 @@ export const POST = withAuth(
 
     const hoist = parseBool(body.hoist)
     const mentionable = parseBool(body.mentionable)
+
+    // Per-guild ceiling shared with create-channel / games-provision. See
+    // #226 + lib/limits/gamesProvision.ts.
+    const guildLimit = checkGamesWriteGuildLimits()
+    if (!guildLimit.ok) {
+      return NextResponse.json(
+        { error: guildLimit.error, retryAfter: guildLimit.retryAfterSec },
+        { status: 429, headers: { 'Retry-After': String(guildLimit.retryAfterSec) } },
+      )
+    }
 
     const reply = await callBot('squishy', 'discord.create_role', {
       name: rawName,

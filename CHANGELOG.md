@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.2] — 2026-05-24
+
+### Fixed
+- **Security (#226): tighter games-provision rate limit + new per-guild ceiling across all three Discord-resource routes.** `provision` dropped from 10/min/actor to 3/min/actor (it does 1 channel + 2 roles + 1 DB row per call — the budget should match the work). Added a shared per-guild bucket (15/min and 100/day across `provision` + `create-role` + `create-channel`) so two simultaneous sudo sessions can't combine to exhaust Discord's per-guild caps (250 roles, 500 channels). Bucket key derives from `env.GUILD_ID` (panel is single-guild today). Implemented in `web/src/lib/limits/gamesProvision.ts`; each route checks the guild limit after input validation, before the RPC call. Returns 429 `guild-rate-limited` or `guild-daily-quota` with a `Retry-After` header.
+
+---
+
 ## [0.1.1] — 2026-05-24
 
 ### Fixed
