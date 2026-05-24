@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.1] — 2026-05-24
+
+### Fixed
+- **Security (#225): CSRF token no longer cached at module scope in `GamesWriteUI.tsx`.** The previous `let cachedCsrfToken: string | null = null` lived in module state in a file imported from a server-rendered page — any accidental server-side evaluation would have turned a per-tab cache into a process-wide singleton serving the wrong user's token. Replaced with `fetchCsrfToken()` which always round-trips `/api/csrf` (cheap, same-process). Side benefit: a session re-auth no longer costs an extra 403 round-trip because the helper isn't holding onto a stale token.
+
 ## [Unreleased]
 
 ### Changed
