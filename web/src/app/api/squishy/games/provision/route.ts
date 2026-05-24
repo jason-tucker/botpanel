@@ -177,7 +177,10 @@ export const POST = withAuth(
       actor: access.actor,
       viewing: access.viewing,
       targetType: 'games',
-      targetId: data.gameId ?? null,
+      // Use the already-validated auditIds.gameId (guaranteed string|null)
+      // so a bot returning a non-string id can't write a bad value into
+      // the audit row's typed targetId column. See #239.
+      targetId: auditIds.gameId,
       before: null,
       after: { ...submitted, ...auditIds },
       success: true,

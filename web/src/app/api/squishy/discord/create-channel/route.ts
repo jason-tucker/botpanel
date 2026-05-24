@@ -165,7 +165,10 @@ export const POST = withAuth(
       actor: access.actor,
       viewing: access.viewing,
       targetType: 'discord_channel',
-      targetId: data.id ?? null,
+      // Use the already-validated auditAfter.id (guaranteed string|null) so
+      // a bot returning a non-string id can't write a bad value into the
+      // audit row's typed targetId column. See #239.
+      targetId: auditAfter.id,
       before: null,
       after: auditAfter,
       success: true,
