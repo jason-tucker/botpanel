@@ -81,6 +81,28 @@ async function fetchCsrfToken(): Promise<string | null> {
   }
 }
 
+// Discord caps channel names at 100 chars. The inline "+ Create channel"
+// flow pre-fills `🎮-{slug}`; the `🎮-` prefix takes 3 chars (`🎮` is one
+// codepoint but two UTF-16 code units, and the `-` is one), and Discord
+// counts by code units, so a 97-char-or-less slug stays safely under the
+// cap. We truncate after slugifying (not before) so we never cut a word
+// mid-character. See #227.
+const CHANNEL_NAME_MAX = 100
+const CHANNEL_PREFIX = '🎮-'
+const CHANNEL_PREFIX_LEN = CHANNEL_PREFIX.length // counts code units
+const CHANNEL_SLUG_MAX = CHANNEL_NAME_MAX - CHANNEL_PREFIX_LEN
+
+function buildChannelDefaultName(raw: string): string {
+  const slug = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, CHANNEL_SLUG_MAX)
+    // .slice can leave a dangling '-' if the cut landed there.
+    .replace(/-+$/g, '')
+  return `${CHANNEL_PREFIX}${slug || 'game'}`
+}
+
 async function requestJson<T = unknown>(
   url: string,
   method: 'POST' | 'PATCH' | 'DELETE',
@@ -290,7 +312,7 @@ function GameFields({
           <InlineCreateButton
             gameId={inlineCreate.gameId}
             kind="channel"
-            defaultName={`🎮-${(gameName ?? defaults?.name ?? 'game').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`}
+            defaultName={buildChannelDefaultName(gameName ?? defaults?.name ?? 'game')}
             patchField="channelId"
             parentId={gamesCategoryId ?? null}
             label="+ Create channel"

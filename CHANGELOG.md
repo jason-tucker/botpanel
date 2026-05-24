@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.3] — 2026-05-24
+
+### Fixed
+- **Security (#227): inline "+ Create channel" default name now truncates to fit Discord's 100-char channel-name cap.** The previous slugifier built `🎮-{name.toLowerCase().replace(/[^a-z0-9]+/g, '-')…}` with no length bound; a near-100-char `defaultName` plus the literal `🎮-` prefix could exceed 100 code units and trigger a confusing 400 from `discord.create_channel`. Extracted the slug logic into `buildChannelDefaultName(raw)` which truncates to `100 - len('🎮-')` after slugifying and trims a dangling `-` if the cut landed on one.
+
+---
+
 ## [0.1.2] — 2026-05-24
 
 ### Fixed
