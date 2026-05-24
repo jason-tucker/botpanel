@@ -58,26 +58,27 @@ const btnCreateInline =
 //
 // `<ServerForm>` already encapsulates CSRF + JSON for the outer form posts;
 // the inline buttons can't use that wrapper (they'd nest forms), so we
-// reimplement the minimum here: lazy-fetch the CSRF token, POST JSON, parse
-// the response, surface a simple {ok, data, error} shape. On 403 csrf we
-// retry once with a fresh token — same recovery the wrapper does.
+// reimplement the minimum here: fetch a fresh CSRF token per request, POST
+// JSON, parse the response, surface a simple {ok, data, error} shape.
+//
+// We DO NOT cache the token in module scope: this file is imported from a
+// server-rendered page, and any accidental server-side evaluation would
+// turn a per-tab cache into a process-wide singleton serving the wrong
+// user's token. The /api/csrf endpoint is cheap (a cookie+token round-trip
+// against the same Next.js process) so fetching every call is fine — and
+// it means a session re-auth doesn't cost an extra 403 round-trip the way
+// a stale cached token did. See #225.
 // ---------------------------------------------------------------------------
 
-let cachedCsrfToken: string | null = null
-async function getCsrfToken(): Promise<string | null> {
-  if (cachedCsrfToken) return cachedCsrfToken
+async function fetchCsrfToken(): Promise<string | null> {
   try {
     const res = await fetch('/api/csrf', { credentials: 'same-origin' })
     if (!res.ok) return null
     const body = (await res.json()) as { token?: unknown }
-    if (typeof body.token === 'string') {
-      cachedCsrfToken = body.token
-      return cachedCsrfToken
-    }
+    return typeof body.token === 'string' ? body.token : null
   } catch {
-    // fall through — caller renders the error
+    return null
   }
-  return null
 }
 
 async function requestJson<T = unknown>(
@@ -95,12 +96,12 @@ async function requestJson<T = unknown>(
       body: JSON.stringify(body ?? {}),
     })
   }
-  let token = await getCsrfToken()
+  let token = await fetchCsrfToken()
   let res = await doFetch(token)
   if (res.status === 403) {
-    // CSRF retry once with a freshly-fetched token.
-    cachedCsrfToken = null
-    token = await getCsrfToken()
+    // CSRF retry once with a freshly-fetched token in case the cookie
+    // rotated between the token fetch and the actual request.
+    token = await fetchCsrfToken()
     res = await doFetch(token)
   }
   let parsed: unknown = null
