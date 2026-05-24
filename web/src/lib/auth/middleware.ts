@@ -57,7 +57,14 @@ export type WithAuthOptions = {
 // by `points × active-keys`.
 const buckets: Map<string, number[]> = new Map()
 
-function checkRateLimit(key: string, points: number, perSeconds: number): boolean {
+/**
+ * Sliding-window rate-limit check. Exported so route handlers can apply
+ * additional buckets (e.g. per-guild ceilings, daily quotas) on top of
+ * the per-actor bucket configured via `withAuth({rateLimit})`. Returns
+ * `true` if the call is allowed (and records the timestamp), `false`
+ * if the bucket is full.
+ */
+export function checkRateLimit(key: string, points: number, perSeconds: number): boolean {
   const now = Date.now()
   const windowMs = perSeconds * 1000
   const cutoff = now - windowMs

@@ -25,6 +25,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { callBot } from '@/lib/botrpc'
+import { checkGamesWriteGuildLimits } from '@/lib/limits/gamesProvision'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -106,6 +107,18 @@ export const POST = withAuth(
       )
     }
 
+    // Per-guild ceiling shared with create-role / create-channel. Defends
+    // Discord's per-guild 250-role / 500-channel caps against a runaway
+    // sudo session or compromised actor combining multiple routes. See
+    // #226 + lib/limits/gamesProvision.ts.
+    const guildLimit = checkGamesWriteGuildLimits()
+    if (!guildLimit.ok) {
+      return NextResponse.json(
+        { error: guildLimit.error, retryAfter: guildLimit.retryAfterSec },
+        { status: 429, headers: { 'Retry-After': String(guildLimit.retryAfterSec) } },
+      )
+    }
+
     const submitted = {
       name: rawName,
       parentCategoryId: parentParse.value,
@@ -165,6 +178,11 @@ export const POST = withAuth(
   {
     require: 'sudo',
     csrf: true,
-    rateLimit: { points: 10, perSeconds: 60 },
+    // Tightened from 10/min — `provision` does 1 channel + 2 roles + 1 DB
+    // insert per call, so the budget should match the work it represents.
+    // Per-guild ceilings layered on top (see checkGamesWriteGuildLimits)
+    // defend against multiple sudo sessions combining to exhaust Discord's
+    // per-guild role/channel caps. See #226.
+    rateLimit: { points: 3, perSeconds: 60 },
   },
 )
