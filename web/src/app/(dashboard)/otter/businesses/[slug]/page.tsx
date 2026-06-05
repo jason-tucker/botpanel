@@ -43,6 +43,8 @@ import {
   type Mapping as MappingCardRow,
 } from './BusinessAdminControls'
 import { EmployeePanel } from './EmployeePanel'
+import { BusinessButtonsEditor } from '@/components/otter/BusinessButtonsEditor'
+import { loadBusinessButtons } from '@/lib/otter/businessButtons'
 
 // MKE staff are managed on the external mke.euphoric.gg portal, so
 // /otter/businesses/mckenzie does NOT mount EmployeePanel — the
@@ -297,6 +299,18 @@ export default async function BusinessDetailPage(
       access.otter.businesses[slug] === 'owner' ||
       access.otter.businesses[slug] === 'manager')
 
+  // Custom command buttons are a discord-only-business feature (MKE has no
+  // bot command surface). Manager+ (or bot owner) may manage them. Loaded
+  // best-effort over RPC — a downed bot degrades to a "couldn't load" card.
+  const viewerCanManageButtons =
+    biz.providerType === 'discord-only' &&
+    (access.botOwner ||
+      access.otter.businesses[slug] === 'owner' ||
+      access.otter.businesses[slug] === 'manager')
+  const buttonsResult = viewerCanManageButtons
+    ? await loadBusinessButtons(slug, access.actor.id)
+    : null
+
   return (
     <main className="min-h-dvh p-6 sm:p-10">
       <div className="max-w-6xl mx-auto flex flex-col gap-6">
@@ -353,6 +367,20 @@ export default async function BusinessDetailPage(
         {/* Employee management — Wave 7c-B / 7e (live roster) */}
         {viewerCanManageEmployees && (
           <EmployeePanel slug={slug} canActAsOwner={viewerOwnsBusiness} />
+        )}
+
+        {/* Custom command buttons (manager+) */}
+        {viewerCanManageButtons && buttonsResult && (
+          buttonsResult.ok ? (
+            <BusinessButtonsEditor slug={slug} items={buttonsResult.items} canEdit />
+          ) : (
+            <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+              <p className="font-medium mb-1">Couldn&apos;t load custom buttons</p>
+              <p className="text-xs text-amber-200/80">
+                The bot returned <code className="font-mono">{buttonsResult.error}</code>.
+              </p>
+            </section>
+          )
         )}
 
         {/* Role mappings */}
