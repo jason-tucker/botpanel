@@ -24,7 +24,16 @@ _v0.1.2 · 1ebf09d_
 
 ---
 
-## [Unreleased]
+## [0.2.1] — 2026-06-05
+
+### Ops
+- **Watchtower image pinned to the maintained `nickfedor/watchtower:latest` fork.** The original `containrrr/watchtower` is unmaintained and its newest images speak a Docker API version this VPS's older Docker daemon can't satisfy, so it would fail to poll/pull on the host. `docker-compose.yml` already points the `watchtower` service at `nickfedor/watchtower:latest` (the actively-maintained drop-in fork with current Docker API support); this entry back-fills that switch into the changelog and confirms it as the canonical image for the auto-pull-and-restart sidecar. No behavior change to the `com.centurylinklabs.watchtower.enable="true"` label contract — only the image source moved.
+
+_v0.2.1 · 3aaf806_
+
+---
+
+## [0.2.0] — 2026-06-05
 
 ### Fixed
 - **Web Push: VAPID public key now served from a runtime API route instead of `NEXT_PUBLIC_VAPID_PUBLIC`.** The Next.js `NEXT_PUBLIC_*` convention inlines values at build time, so the CI image baked without VAPID_PUBLIC set had `undefined` inlined into the client bundle — the operator couldn't fix it by editing `.env` + restarting. Replaced the build-time inline with a new `GET /api/push/config` route that returns `{ publicKey: env.VAPID_PUBLIC }`; the `<PushOptIn>` component fetches on mount. Operators now need exactly three vars (`VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_SUBJECT`) and a container restart is enough to rotate keys. Closes #218.
@@ -243,3 +252,5 @@ _v0.1.2 · 1ebf09d_
 ### Security
 - **All ingress flows through Cloudflare Tunnel.** No ports are bound on the VPS host — `cloudflared` connects outbound to Cloudflare's edge. The only world-bound port on the host stays SSH (`:22`).
 - **Shared `botpanel-net` external docker network** so botpanel can reach the bots' Postgres DBs without any host port mapping. Both `squishybot` and `otterbot` compose stacks were updated in the same change to remove their public Postgres bindings and join this network with stable aliases `db-squishy` / `db-otter`.
+
+_v0.2.0 · 3aaf806_
