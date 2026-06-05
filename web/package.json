@@ -1,6 +1,6 @@
 {
   "name": "botpanel-web",
-  "version": "0.1.2",
+  "version": "0.2.1",
   "description": "Web control panel for the Squishy & Otter Discord bots",
   "private": true,
   "type": "module",
