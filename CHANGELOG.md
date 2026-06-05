@@ -14,6 +14,16 @@ _v0.1.1 · 6f07060_
 
 ---
 
+## [0.1.2] — 2026-06-05
+
+### Docs
+- **Full README rewrite + wiki overhaul to match the shipped panel.** The README still described the repo as "Phase 0 — landing page only" with Next.js + auth "coming in MVP," but the panel is fully built: Discord OAuth, capability-based auth (`resolveAccess` → flat map, not tiers), `withAuth` gating + CSRF + in-memory rate limit, View-As, the HMAC Redis command bus (`callBot`/`botrpc.ts`), heartbeat aggregation (`heartbeats.ts`/`redis.ts`), SSE streams, cache-invalidation publisher (`events/invalidate.ts`), OAuth refresh-token encryption at rest (`OAUTH_TOKEN_KEY`/`tokenCrypto.ts`), and Web Push (VAPID). Rewrote to the standard structure (Overview → Architecture → Stack → Quick start → Configuration → Usage → Deployment → Conventions) with a complete env table, a panel-area table, the real Redis integration, and the correct loopback-only/no-public-ports + standalone-cloudflared topology. Removed all references to the deleted `dev` branch / dev clone. Overhauled the seven wiki pages (Architecture, Auth-Model, Bot-Integration, Deployment, Home, Roadmap, Security-Checklist) to the same current reality — notably fixing Bot-Integration's nonexistent `events/bus.ts`/`events/types.ts` references and the stale RPC envelope shape, and flipping the Roadmap from "MVP/V2/V3 planned" to shipped.
+- **Added a `description` to `web/package.json`** ("Web control panel for the Squishy & Otter Discord bots").
+
+_v0.1.2 · 1ebf09d_
+
+---
+
 ## [Unreleased]
 
 ### Fixed
