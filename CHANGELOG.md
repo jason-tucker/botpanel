@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Reusable Components-V2 message editor (`web/src/components/msgeditor/` + `web/src/lib/msgspec/`).** A portable, feature-agnostic embed designer: structured container/text/section-with-accessory/separator/image-gallery/link-button builder with reorder, an accent-color picker (swatches + native picker), a Discord-markdown toolbar (bold/italic/underline/strike/code/code-block/heading/subtext/quote/bullet/link), a dynamic-variable insert menu, a full Discord timestamp builder (`<t:UNIX:R>` and every style), and a live Discord-styled WYSIWYG preview. The message format is a versioned zod-validated "message spec" (`msgspec/schema.ts`) any panel feature can reuse.
+- **Game Night scheduler at `/squishy/game-night`.** Design a post in the editor with `{{game}}`/`{{when:F}}`/`{{host}}`/`{{rsvp}}`/etc. variables, target a channel, set the event time, then **Post now** or **Schedule** for a specific time. Posts get auto RSVP / own-a-copy buttons whose state is persisted in the DB (survives bot restarts). List shows scheduled/posted/failed/canceled with Send-now / Edit / Delete. New nav link under **Squishy → Game Night**.
+- **API routes** `POST /api/squishy/scheduled-posts`, `PATCH|DELETE /api/squishy/scheduled-posts/[id]`, `POST /api/squishy/scheduled-posts/[id]/send` — sudo-gated, CSRF + rate-limited, audited; spec validated server-side via `parseMessageSpec`. Send-now / live-post retract go through the new `scheduled_post.send` / `scheduled_post.cancel` bot verbs.
+- **Vendored `scheduled_posts` schema** (`web/src/lib/db/schema/squishy/scheduledPosts.ts`) synced from squishybot.
+
+---
+
 ## [0.1.1] — 2026-05-24
 
 ### Fixed

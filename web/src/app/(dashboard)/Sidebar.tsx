@@ -161,6 +161,7 @@ export function Sidebar({
       { href: '/squishy/welcome', label: 'Welcome / Goodbye' },
       { href: '/squishy/hubs', label: 'Hubs' },
       { href: '/squishy/games', label: 'Games' },
+      { href: '/squishy/game-night', label: 'Game Night' },
       { href: '/squishy/profiles', label: 'Profiles' },
       { href: '/squishy/members', label: 'Members' },
       { href: '/squishy/automation', label: 'Automation' },
