@@ -33,6 +33,7 @@ export type ScheduledPostDTO = {
   error: string | null
   eventAt: string | null
   notes: string
+  steam: string
   spec: MessageSpec
   createdAt: string
 }
@@ -164,6 +165,7 @@ export function GameNightManager({
   const [title, setTitle] = useState('')
   const [channelId, setChannelId] = useState('')
   const [notes, setNotes] = useState('')
+  const [steam, setSteam] = useState('')
   const [eventLocal, setEventLocal] = useState(defaultEvent)
   const [scheduleMode, setScheduleMode] = useState<'now' | 'at'>('at')
   const [fireLocal, setFireLocal] = useState(defaultEvent)
@@ -180,14 +182,16 @@ export function GameNightManager({
     const ctx = previewContext(vars, { when: eventUnix })
     ctx.values.game = title || 'Game Night'
     ctx.values.notes = notes
+    ctx.values.steam = steam
     return ctx
-  }, [vars, eventUnix, title, notes])
+  }, [vars, eventUnix, title, notes, steam])
 
   function resetEditor() {
     setEditingId(null)
     setTitle('')
     setChannelId('')
     setNotes('')
+    setSteam('')
     setEventLocal(defaultEvent())
     setScheduleMode('at')
     setFireLocal(defaultEvent())
@@ -202,6 +206,7 @@ export function GameNightManager({
     setTitle(row.title)
     setChannelId(row.channelId)
     setNotes(row.notes)
+    setSteam(row.steam)
     setEventLocal(row.eventAt ? toLocalInput(new Date(row.eventAt)) : defaultEvent())
     setScheduleMode(row.fireAt ? 'at' : 'now')
     setFireLocal(row.fireAt ? toLocalInput(new Date(row.fireAt)) : defaultEvent())
@@ -231,7 +236,7 @@ export function GameNightManager({
     setBusy(true)
     setError(null)
     setNotice(null)
-    const variables = { notes, eventAt: localToIso(eventLocal) }
+    const variables = { notes, eventAt: localToIso(eventLocal), steam: steam.trim() }
 
     if (editingId) {
       const res = await requestJson(`/api/squishy/scheduled-posts/${editingId}`, 'PATCH', {
@@ -342,6 +347,10 @@ export function GameNightManager({
           <div className="flex flex-col gap-1">
             <label className={labelCls}>Notes — feeds {`{{notes}}`}</label>
             <input className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="optional" maxLength={2000} />
+          </div>
+          <div className="flex flex-col gap-1 md:col-span-2">
+            <label className={labelCls}>Steam link — feeds {`{{steam}}`} (insert anywhere, or use the default 🎮 button)</label>
+            <input className={inputCls} value={steam} onChange={(e) => setSteam(e.target.value)} placeholder="https://store.steampowered.com/app/…" maxLength={512} inputMode="url" />
           </div>
         </div>
 
