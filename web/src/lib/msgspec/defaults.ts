@@ -76,6 +76,7 @@ export function gameNightVariables(eventUnix?: number): VariableDef[] {
     { name: 'host', label: 'Host (mention)', sample: '@you' },
     { name: 'channel', label: 'This channel', sample: '#game-night' },
     { name: 'notes', label: 'Notes', sample: 'BYO snacks 🍿' },
+    { name: 'steam', label: 'Steam link (URL)', sample: 'https://store.steampowered.com/app/1966720/Lethal_Company/', description: 'Drop {{steam}} into any text or a button URL.' },
     { name: 'rsvp', label: 'RSVP summary block', sample: '✅ **Joining (2):** @ana, @ben\n🤔 **Might join (1):** @cal\n❌ **Not joining (0):** _none_' },
     { name: 'count.in', label: '# joining', sample: '2' },
     { name: 'count.maybe', label: '# maybe', sample: '1' },
@@ -100,6 +101,8 @@ export function gameNightDefaultSpec(): MessageSpec {
           newText('## 🎲 Game Night — {{game}}'),
           newText('📅 {{when:F}}  ·  {{when:R}}'),
           newText('{{notes}}'),
+          // Auto-hides (button dropped on render) when no Steam URL is set.
+          { type: 'action_row', components: [{ type: 'button', style: 'link', label: 'Open in Steam', emoji: '🎮', url: '{{steam}}' }] },
           { type: 'separator', divider: true, spacing: 'small' },
           newText('{{rsvp}}'),
           { type: 'separator', divider: true, spacing: 'small' },

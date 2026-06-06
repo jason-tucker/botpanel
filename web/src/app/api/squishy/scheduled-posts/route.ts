@@ -57,6 +57,7 @@ function sanitizeVariables(raw: unknown): Record<string, unknown> {
   const o = raw as Record<string, unknown>
   if (typeof o.notes === 'string') out.notes = o.notes.slice(0, 2000)
   if (typeof o.eventAt === 'string' && Number.isFinite(Date.parse(o.eventAt))) out.eventAt = o.eventAt
+  if (typeof o.steam === 'string' && /^https?:\/\//i.test(o.steam.trim())) out.steam = o.steam.trim().slice(0, 512)
   return out
 }
 

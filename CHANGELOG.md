@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Game Night scheduler at `/squishy/game-night`.** Design a post in the editor with `{{game}}`/`{{when:F}}`/`{{host}}`/`{{rsvp}}`/etc. variables, target a channel, set the event time, then **Post now** or **Schedule** for a specific time. Posts get auto RSVP / own-a-copy buttons whose state is persisted in the DB (survives bot restarts). List shows scheduled/posted/failed/canceled with Send-now / Edit / Delete. New nav link under **Squishy → Game Night**.
 - **API routes** `POST /api/squishy/scheduled-posts`, `PATCH|DELETE /api/squishy/scheduled-posts/[id]`, `POST /api/squishy/scheduled-posts/[id]/send` — sudo-gated, CSRF + rate-limited, audited; spec validated server-side via `parseMessageSpec`. Send-now / live-post retract go through the new `scheduled_post.send` / `scheduled_post.cancel` bot verbs.
 - **Vendored `scheduled_posts` schema** (`web/src/lib/db/schema/squishy/scheduledPosts.ts`) synced from squishybot.
+- **Steam link for game-night posts.** A "Steam link" URL field exposes a `{{steam}}` variable you can drop anywhere (any text line or a button URL), and the starter template ships a "🎮 Open in Steam" link button that auto-hides (in preview and on render) when no URL is set.
 
 ---
 

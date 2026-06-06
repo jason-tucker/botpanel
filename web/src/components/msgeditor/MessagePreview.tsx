@@ -48,16 +48,19 @@ function Button({ b, k }: { b: PreviewButton; k: string }) {
 }
 
 function ButtonRow({ buttons, k }: { buttons: PreviewButton[]; k: string }) {
-  if (buttons.length === 0) return null
+  // Mirror the bot: a link button with no resolved URL (e.g. an empty {{steam}})
+  // is dropped, so the preview stays WYSIWYG.
+  const visible = buttons.filter((b) => b.style !== 'link' || (b.url ? /^https?:\/\//i.test(b.url) : false))
+  if (visible.length === 0) return null
   return (
     <div className="my-1 flex flex-wrap gap-2">
-      {buttons.map((b, i) => <Button key={`${k}-${i}`} b={b} k={`${k}-${i}`} />)}
+      {visible.map((b, i) => <Button key={`${k}-${i}`} b={b} k={`${k}-${i}`} />)}
     </div>
   )
 }
 
 function specButtonToPreview(b: ButtonSpec, ctx: SubstitutionContext): PreviewButton {
-  return { label: b.label ? substitute(b.label, ctx) : undefined, emoji: b.emoji, style: b.style, url: b.url }
+  return { label: b.label ? substitute(b.label, ctx) : undefined, emoji: b.emoji, style: b.style, url: b.url ? substitute(b.url, ctx) : undefined }
 }
 
 /* eslint-disable @next/next/no-img-element */

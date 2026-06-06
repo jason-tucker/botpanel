@@ -59,6 +59,7 @@ export default async function GameNightPage() {
           error: r.error ?? null,
           eventAt: typeof vars.eventAt === 'string' ? vars.eventAt : null,
           notes: typeof vars.notes === 'string' ? vars.notes : '',
+          steam: typeof vars.steam === 'string' ? vars.steam : '',
           spec: r.spec as MessageSpec,
           createdAt: new Date(r.createdAt).toISOString(),
         }
