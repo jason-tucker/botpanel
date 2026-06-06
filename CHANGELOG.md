@@ -7,7 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] — 2026-06-06
+
 ### Added
+- **Sidebar version badge + "What's new" changelog dialog.** The sidebar footer (directly below **Sign out**) now shows the current app version; clicking it opens a modal of curated, user-facing release notes. The version string + notes live in `web/src/lib/changelog.ts` (`APP_VERSION` is derived from the newest entry, so the badge tracks the top of the list), and the dialog lives in `web/src/app/(dashboard)/ChangelogButton.tsx` — portaled to `document.body` so the sidebar's `z`-stacking context doesn't trap it, with Escape / backdrop-click to close and background-scroll lock while open. This is the user-facing companion to this file; cutting a release means adding an entry in both.
 - **Reusable Components-V2 message editor (`web/src/components/msgeditor/` + `web/src/lib/msgspec/`).** A portable, feature-agnostic embed designer: structured container/text/section-with-accessory/separator/image-gallery/link-button builder with reorder, an accent-color picker (swatches + native picker), a Discord-markdown toolbar (bold/italic/underline/strike/code/code-block/heading/subtext/quote/bullet/link), a dynamic-variable insert menu, a full Discord timestamp builder (`<t:UNIX:R>` and every style), and a live Discord-styled WYSIWYG preview. The message format is a versioned zod-validated "message spec" (`msgspec/schema.ts`) any panel feature can reuse.
 - **Game Night scheduler at `/squishy/game-night`.** Design a post in the editor with `{{game}}`/`{{when:F}}`/`{{host}}`/`{{rsvp}}`/etc. variables, target a channel, set the event time, then **Post now** or **Schedule** for a specific time. Posts get auto RSVP / own-a-copy buttons whose state is persisted in the DB (survives bot restarts). List shows scheduled/posted/failed/canceled with Send-now / Edit / Delete. New nav link under **Squishy → Game Night**.
 - **API routes** `POST /api/squishy/scheduled-posts`, `PATCH|DELETE /api/squishy/scheduled-posts/[id]`, `POST /api/squishy/scheduled-posts/[id]/send` — sudo-gated, CSRF + rate-limited, audited; spec validated server-side via `parseMessageSpec`. Send-now / live-post retract go through the new `scheduled_post.send` / `scheduled_post.cancel` bot verbs.

@@ -25,6 +25,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import type { AccessMap } from '@/lib/auth/perms'
+import { ChangelogButton } from './ChangelogButton'
 
 type SessionLike = {
   id: string
@@ -354,6 +355,8 @@ export function Sidebar({
             Sign out
           </button>
         </form>
+        {/* Version badge → "What's new" changelog dialog. */}
+        <ChangelogButton />
       </div>
     </div>
   )
