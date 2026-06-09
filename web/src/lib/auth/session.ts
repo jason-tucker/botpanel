@@ -80,7 +80,18 @@ export async function setSessionCookie(token: string): Promise<void> {
 
 export async function clearSessionCookie(): Promise<void> {
   const c = await cookies()
-  c.delete(COOKIE_NAME)
+  // `__Host-` cookies require Secure + Path=/ on EVERY Set-Cookie, including
+  // the one that clears them. `cookies().delete()` omits those, so the browser
+  // ignores the deletion and logout silently leaves the session cookie in
+  // place (the user stays logged in). Overwrite with a matching expired cookie
+  // instead. See viewAs.ts clearViewAsCookie for the same fix + rationale.
+  c.set(COOKIE_NAME, '', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  })
 }
 
 export async function getSession(): Promise<Session | null> {

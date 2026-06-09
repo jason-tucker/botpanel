@@ -32,7 +32,17 @@ export async function GET(req: Request) {
   // Verify state against the single-use cookie set in /api/auth/login.
   const c = await cookies()
   const expected = c.get('__Host-oauth-state')?.value
-  c.delete('__Host-oauth-state')
+  // Clear the single-use state cookie by overwriting with an expired one — NOT
+  // `c.delete()`, which omits Secure/Path and is rejected for `__Host-` cookies
+  // (same gotcha as session/view-as clears). Harmless here since it also has a
+  // 10-min maxAge, but kept consistent so the antipattern doesn't get copied.
+  c.set('__Host-oauth-state', '', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  })
   if (!expected || expected !== state) {
     return NextResponse.redirect(homeUrl('?error=bad_state'))
   }
