@@ -20,6 +20,7 @@ import { resolveOneUsername } from '@/lib/userDisplay'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { env } from '@/lib/env'
 import { PushOptIn } from '@/components/PushOptIn'
+import { PageHeader, StatCard } from '@/components/ui/feedback'
 
 export const dynamic = 'force-dynamic'
 
@@ -191,12 +192,43 @@ export default async function MePage() {
   return (
     <div className="p-6 sm:p-10 pt-16 md:pt-10">
       <div className="max-w-3xl mx-auto flex flex-col gap-6">
-        <header>
-          <h1 className="text-2xl font-semibold">My Dashboard</h1>
-          <p className="text-sm text-ink-dim mt-1">
-            Your identity and capabilities, as the panel sees them.
-          </p>
-        </header>
+        <PageHeader
+          icon="overview"
+          eyebrow={viewAsActive ? 'Viewing as' : undefined}
+          title="My Dashboard"
+          description="Your identity and capabilities, as the panel sees them."
+        />
+
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Voice control"
+            value={voiceCount}
+            hint="channels you manage"
+            icon="voice"
+            tone={voiceCount > 0 ? 'accent' : 'neutral'}
+          />
+          <StatCard
+            label="Businesses"
+            value={businessEntries.length}
+            hint="Otter roles"
+            icon="businesses"
+            tone={businessEntries.length > 0 ? 'info' : 'neutral'}
+          />
+          <StatCard
+            label="Games visible"
+            value={gamePrefs ? gamePrefs.viewCount : '—'}
+            hint="opted-in roles"
+            icon="games"
+            tone="success"
+          />
+          <StatCard
+            label="LFG pings"
+            value={gamePrefs ? gamePrefs.pingCount : '—'}
+            hint="ping subscriptions"
+            icon="bell"
+            tone="warning"
+          />
+        </section>
 
         <section className="rounded-2xl border border-line bg-bg-card p-5 flex items-center gap-4">
           {avatar ? (
