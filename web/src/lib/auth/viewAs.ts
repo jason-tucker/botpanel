@@ -65,5 +65,19 @@ export async function setViewAsCookie(userId: string): Promise<void> {
 
 export async function clearViewAsCookie(): Promise<void> {
   const c = await cookies()
-  c.delete(VIEW_AS_COOKIE)
+  // DO NOT use `c.delete()` here. A `__Host-`-prefixed cookie can only be
+  // mutated by a Set-Cookie that itself satisfies the prefix rules (Secure +
+  // Path=/, no Domain). `cookies().delete()` emits a bare expiry WITHOUT
+  // Secure/Path, so the browser rejects it and the cookie never clears —
+  // leaving the operator stuck in View-As (Exit appears to do nothing, and
+  // only manually clearing cookies escapes). Overwrite with an already-expired
+  // cookie carrying the SAME attributes we set it with; that Set-Cookie is
+  // valid and actually removes it.
+  c.set(VIEW_AS_COOKIE, '', {
+    httpOnly: false,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  })
 }

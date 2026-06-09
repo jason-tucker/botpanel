@@ -26,6 +26,13 @@ export type ChangelogEntry = {
 /** Newest first. `CHANGELOG[0]` is the current release. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.1',
+    date: '2026-06-09',
+    highlights: [
+      'Fixed: “Exit” on the View-As banner (and Sign out) now actually work — previously the cookie wasn’t being cleared, so you could get stuck viewing as someone else. No more clearing cookies by hand.',
+    ],
+  },
+  {
     version: '0.4.0',
     date: '2026-06-09',
     highlights: [
