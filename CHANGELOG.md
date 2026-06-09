@@ -7,6 +7,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — UI overhaul, phase 1 (foundation)
+- **Discord-style multi-column app shell.** Replaced the flat link-list sidebar (`Sidebar.tsx`, removed) + thin `DashboardShell` with a new layout: a left **icon rail** (`LeftRail.tsx`) that switches between top-level sections (Overview / Squishy / Otter / Sudo, each with its own accent + active "pill" indicator), a contextual **section sidebar** (`SectionSidebar.tsx`) showing only the active section's groups, and a **top bar** (`TopBar.tsx`) with breadcrumb, search, live bot health, and user menu. Driven by a single serializable nav model (`(dashboard)/nav.ts`, `buildNav`) that ports the old capability + guild-membership gating verbatim, consumed by the rail, sidebar, and command palette so the three never drift. Interactive layout/state lives in a new client `AppFrame.tsx`; `DashboardShell.tsx` is now a thin server transform (build nav, snapshot health, reduce AccessMap → serializable props).
+- **⌘K / Ctrl-K command palette** (`CommandPalette.tsx`): fuzzy search across every nav item the viewer can see (respects the same gating as the sidebar) plus stateful actions (Exit View-As, Sign out). Keyboard-first (↑/↓/Enter/Esc), portaled above all stacking contexts.
+- **Live bot-health pills in the top bar** (`BotHealth.tsx`) seeded from a server snapshot and polling the new `GET /api/health/bots` every 30s. Backed by `getShellHealth()` added to `lib/heartbeats.ts` (normalizes the heartbeat map → `{ online, version, uptimeSec, lastBeatSec, guildCount }`; offline/stale bots are absent and rendered offline client-side).
+- **Global toast host** (`ToastHost.tsx`) — finally mounts the long-existing `useToast()` module bus once in the shell, so any client write can surface feedback without per-page plumbing.
+- **Reusable UI kit** under `web/src/components/ui/` (barrel `index.ts`): `Button`/`buttonClasses`, `Card` family + `Eyebrow`, `Badge`, `Input`/`Textarea`/`Select`/`Label`/`Field`/`Hint`, `Switch`, `Dialog`, `Tabs`, `Skeleton`/`EmptyState`/`StatCard`/`PageHeader`, a `cn` classnames helper, a self-contained inline-SVG `Icon` set (~50 glyphs) + `Spinner`. No new runtime deps — icons are bespoke so the build never depends on an external icon package.
+- **User menu** (`UserMenu.tsx`) — avatar dropdown in the top bar (dashboard / edit profile / report / sign out), View-As aware.
+
+### Changed
+- **New color system + design tokens** (`tailwind.config.ts`): kept every pre-existing token NAME (`bg`/`bg-card`/`bg-card2`, `line`, `ink`/`ink-dim`, `accent`, `ok`/`warn`/`err`) so all 33 existing pages adopt the refresh with zero per-page edits — only the values changed (blue-violet near-black surfaces, an iris/violet brand `accent`, cyan/gold/rose section accents). Added elevation surfaces (`bg-app`/`bg-rail`/`bg-sidebar`/`bg-raised`/`bg-hover`), `line-bright`, `ink-faint`, an `accent` ramp (`bright`/`soft`), semantic `info`, depth shadows (`card`/`pop`/`glow`), and entrance animations (`fade-in`/`scale-in`/`slide-up`).
+- **`globals.css`**: thin custom scrollbars matching the dark surfaces, brand selection color, a `.no-scrollbar` utility for the rail.
+- **`ViewAsBanner`** now renders as a flush full-width strip at the top of the new shell (dropped the old `md:pl-52` sidebar offset).
+- Sidebar version badge / "What's new" dialog now lives in the section sidebar footer (`ChangelogButton` reused unchanged). Bumped `web/package.json` to `0.4.0` and added the user-facing 0.4.0 changelog entry.
+
+> Phase 1 is the foundation: every page immediately gets the new chrome, palette, and primitives. Subsequent phases restyle individual pages onto the kit and expand features (live dashboards, message composer everywhere, deep member/profile admin, full Otter business admin) area-by-area.
+
 ---
 
 ## [0.3.0] — 2026-06-06

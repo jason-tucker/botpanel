@@ -74,8 +74,8 @@ export function ViewAsBanner({
   }
 
   return (
-    <div className="sticky top-0 z-30 bg-err text-ink shadow-md border-b border-err">
-      <div className="px-4 md:pl-52 md:pr-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+    <div className="relative z-40 flex-none bg-err text-white shadow-md">
+      <div className="px-4 md:px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
         <span className="flex-1 min-w-0">
           Viewing as <span className="font-semibold">@{viewingUsername}</span>
           {' — '}

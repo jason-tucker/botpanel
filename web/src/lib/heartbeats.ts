@@ -120,3 +120,32 @@ export function getHeartbeats(): Record<string, Record<string, unknown>> {
 
   return out
 }
+
+/**
+ * Normalized shape for the dashboard shell's topbar pills + Overview cards.
+ * Maps the raw `uptime` field to `uptimeSec` and drops the `lastSeen`/`online`
+ * bookkeeping into a tidy typed row. Offline/stale bots are simply absent
+ * (same as `getHeartbeats`), so callers fill "offline" for any missing name.
+ */
+export interface ShellHealthRow {
+  online: boolean
+  version?: string
+  uptimeSec?: number
+  lastBeatSec?: number
+  guildCount?: number
+}
+
+export function getShellHealth(): Record<string, ShellHealthRow> {
+  const raw = getHeartbeats()
+  const out: Record<string, ShellHealthRow> = {}
+  for (const [name, row] of Object.entries(raw)) {
+    out[name] = {
+      online: row.online === true,
+      version: typeof row.version === 'string' ? row.version : undefined,
+      uptimeSec: typeof row.uptime === 'number' ? row.uptime : undefined,
+      lastBeatSec: typeof row.lastBeatSec === 'number' ? row.lastBeatSec : undefined,
+      guildCount: typeof row.guildCount === 'number' ? row.guildCount : undefined,
+    }
+  }
+  return out
+}

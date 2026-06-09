@@ -26,6 +26,17 @@ export type ChangelogEntry = {
 /** Newest first. `CHANGELOG[0]` is the current release. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.0',
+    date: '2026-06-09',
+    highlights: [
+      'Brand-new look & layout: a Discord-style icon rail on the left switches between Overview, Squishy, Otter and Sudo, with a focused sidebar for each. Fresh violet/cyan colour system across the whole panel.',
+      'Press ⌘K (Ctrl-K) anywhere to jump to any page or run a quick action — search-as-you-type with full keyboard control.',
+      'Live bot health is now always visible in the top bar (Squishy + Otter online/offline, updating every 30s), with uptime and last-heartbeat detail on hover.',
+      'A redesigned top bar shows where you are, a one-click search, your avatar menu (dashboard, profile, sign out), and the View-As state.',
+      'Polished building blocks (buttons, cards, inputs, toasts, dialogs) under the hood so every page feels consistent — more pages move onto these next.',
+    ],
+  },
+  {
     version: '0.3.0',
     date: '2026-06-06',
     highlights: [
