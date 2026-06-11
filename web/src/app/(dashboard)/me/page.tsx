@@ -79,23 +79,7 @@ export default async function MePage() {
   // reflects the viewed user (resolveAccess gave us their capabilities).
   // The actor's identity remains visible in the sidebar + banner.
   const viewAsActive = access.actor.id !== access.viewing.id
-  let identityId = session.id
-  let identityUsername = session.username
-  let identityAvatarUrl = avatarUrl(session.id, session.avatar)
-  if (viewAsActive) {
-    identityId = access.viewing.id
-    // resolveAccess fills `viewing.username` blank — fetch from the bot
-    // for a friendly chip. Falls back to the raw ID if not cached.
-    const resolved = await resolveOneUsername('squishy', access.viewing.id)
-    identityUsername =
-      resolved?.displayName ?? resolved?.username ?? access.viewing.id
-    // The bot returns a fully-qualified avatar URL (or null). Reuse it
-    // directly rather than rebuilding from a hash — we don't have the
-    // hash on hand here.
-    identityAvatarUrl = resolved?.avatarUrl ?? null
-  }
 
-  const avatar = identityAvatarUrl
   const businessEntries = Object.entries(access.otter.businesses).sort(([a], [b]) => a.localeCompare(b))
   const voiceCount = access.squishy.voiceChannels.length
 
@@ -104,8 +88,9 @@ export default async function MePage() {
   // fallback; prefer manual, fall back to fallback, then to a generic label
   // so the UI never renders an empty title. Best-effort: if squishyDb is
   // unreachable we just fall through to the raw-ID rendering downstream.
-  const voiceNames = new Map<string, string>()
-  if (voiceCount > 0) {
+  const loadVoiceNames = async (): Promise<Map<string, string>> => {
+    const names = new Map<string, string>()
+    if (voiceCount === 0) return names
     try {
       const rows = await squishyDb
         .select({
@@ -117,11 +102,12 @@ export default async function MePage() {
         .where(inArray(squishySchema.autoChannels.voiceChannelId, access.squishy.voiceChannels))
       for (const r of rows) {
         const name = (r.manualName?.trim() || r.fallbackName?.trim() || '').trim()
-        if (name) voiceNames.set(r.voiceChannelId, name)
+        if (name) names.set(r.voiceChannelId, name)
       }
     } catch {
       // Leave the map empty — IDs render as their own label.
     }
+    return names
   }
 
   // Active auto-voice membership — show a card if the viewing user is
@@ -134,27 +120,27 @@ export default async function MePage() {
     joinedAt: Date
     canControl: boolean
   }
-  let activeVoice: ActiveVoice | null = null
-  try {
-    const rows = await squishyDb
-      .select({
-        voiceChannelId: squishySchema.autoChannelMembers.voiceChannelId,
-        joinedAt: squishySchema.autoChannelMembers.joinedAt,
-        manualName: squishySchema.autoChannels.manualName,
-        fallbackName: squishySchema.autoChannels.fallbackName,
-      })
-      .from(squishySchema.autoChannelMembers)
-      .innerJoin(
-        squishySchema.autoChannels,
-        eq(squishySchema.autoChannelMembers.voiceChannelId, squishySchema.autoChannels.voiceChannelId),
-      )
-      .where(eq(squishySchema.autoChannelMembers.userId, access.viewing.id))
-      .orderBy(desc(squishySchema.autoChannelMembers.joinedAt))
-      .limit(1)
-    const r = rows[0]
-    if (r) {
+  const loadActiveVoice = async (): Promise<ActiveVoice | null> => {
+    try {
+      const rows = await squishyDb
+        .select({
+          voiceChannelId: squishySchema.autoChannelMembers.voiceChannelId,
+          joinedAt: squishySchema.autoChannelMembers.joinedAt,
+          manualName: squishySchema.autoChannels.manualName,
+          fallbackName: squishySchema.autoChannels.fallbackName,
+        })
+        .from(squishySchema.autoChannelMembers)
+        .innerJoin(
+          squishySchema.autoChannels,
+          eq(squishySchema.autoChannelMembers.voiceChannelId, squishySchema.autoChannels.voiceChannelId),
+        )
+        .where(eq(squishySchema.autoChannelMembers.userId, access.viewing.id))
+        .orderBy(desc(squishySchema.autoChannelMembers.joinedAt))
+        .limit(1)
+      const r = rows[0]
+      if (!r) return null
       const name = (r.manualName?.trim() || r.fallbackName?.trim() || 'Unnamed channel')
-      activeVoice = {
+      return {
         voiceChannelId: r.voiceChannelId,
         name,
         joinedAt: r.joinedAt instanceof Date ? r.joinedAt : new Date(r.joinedAt),
@@ -162,32 +148,64 @@ export default async function MePage() {
         // (owner / acting-owner / host / sudo / bot-owner — server-computed).
         canControl: access.squishy.voiceChannels.includes(r.voiceChannelId),
       }
+    } catch {
+      // null — card just won't render.
+      return null
     }
-  } catch {
-    // Leave activeVoice null — card just won't render.
   }
 
   // Game preference counts (view/ping). Best-effort; null on error so the
   // card can render an "unavailable" state rather than fault the page.
-  let gamePrefs: { viewCount: number; pingCount: number } | null = null
-  try {
-    const rows = await squishyDb
-      .select({
-        wantsView: squishySchema.userGamePrefs.wantsView,
-        wantsPing: squishySchema.userGamePrefs.wantsPing,
-      })
-      .from(squishySchema.userGamePrefs)
-      .where(eq(squishySchema.userGamePrefs.userId, access.viewing.id))
-    let viewCount = 0
-    let pingCount = 0
-    for (const r of rows) {
-      if (r.wantsView) viewCount++
-      if (r.wantsPing) pingCount++
+  const loadGamePrefs = async (): Promise<{ viewCount: number; pingCount: number } | null> => {
+    try {
+      const rows = await squishyDb
+        .select({
+          wantsView: squishySchema.userGamePrefs.wantsView,
+          wantsPing: squishySchema.userGamePrefs.wantsPing,
+        })
+        .from(squishySchema.userGamePrefs)
+        .where(eq(squishySchema.userGamePrefs.userId, access.viewing.id))
+      let viewCount = 0
+      let pingCount = 0
+      for (const r of rows) {
+        if (r.wantsView) viewCount++
+        if (r.wantsPing) pingCount++
+      }
+      return { viewCount, pingCount }
+    } catch {
+      // null sentinel — card renders an "unavailable" hint
+      return null
     }
-    gamePrefs = { viewCount, pingCount }
-  } catch {
-    // null sentinel — card renders an "unavailable" hint
   }
+
+  // All four reads are independent (three Squishy DB queries + an optional
+  // bot RPC for the viewed user's display name) — run them in one parallel
+  // round instead of the old four sequential awaits. Each loader keeps its
+  // own best-effort fallback, so a single failure still degrades only its
+  // own card.
+  const [voiceNames, activeVoice, gamePrefs, viewedUser] = await Promise.all([
+    loadVoiceNames(),
+    loadActiveVoice(),
+    loadGamePrefs(),
+    // resolveAccess fills `viewing.username` blank — fetch from the bot
+    // for a friendly chip. Falls back to the raw ID if not cached.
+    viewAsActive ? resolveOneUsername('squishy', access.viewing.id) : Promise.resolve(null),
+  ])
+
+  let identityId = session.id
+  let identityUsername = session.username
+  let identityAvatarUrl = avatarUrl(session.id, session.avatar)
+  if (viewAsActive) {
+    identityId = access.viewing.id
+    identityUsername =
+      viewedUser?.displayName ?? viewedUser?.username ?? access.viewing.id
+    // The bot returns a fully-qualified avatar URL (or null). Reuse it
+    // directly rather than rebuilding from a hash — we don't have the
+    // hash on hand here.
+    identityAvatarUrl = viewedUser?.avatarUrl ?? null
+  }
+
+  const avatar = identityAvatarUrl
 
   return (
     <div className="p-6 sm:p-10 pt-16 md:pt-10">
