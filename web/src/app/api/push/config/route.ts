@@ -29,5 +29,7 @@ export const GET = withAuth(
     }
     return NextResponse.json({ publicKey: key })
   },
-  { require: 'any' },
+  // `resolveCaps: false` — the handler never reads capabilities; "logged
+  // in" is the whole gate, so skip the Postgres/RPC capability lookups.
+  { require: 'any', resolveCaps: false },
 )

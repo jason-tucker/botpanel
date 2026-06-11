@@ -18,10 +18,11 @@
  * API routes.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from './session'
+import { getSession, type Session } from './session'
 import { resolveAccess, type AccessMap } from './perms'
 import { verifyCsrfToken } from './csrf'
 import { getViewAsUserIdFromRequest } from './viewAs'
+import { env } from '../env'
 
 export type AuthRequirement = 'any' | 'sudo' | 'botOwner'
 
@@ -47,6 +48,22 @@ export type WithAuthOptions = {
   require?: AuthRequirement
   csrf?: boolean
   rateLimit?: RateLimitSpec
+  /**
+   * `false` skips capability resolution (Postgres sudo/voice lookups +
+   * the otter-ranks bot RPC) and hands the handler a session-only
+   * AccessMap: identity from the JWT, `botOwner` from the env compare
+   * (pure, no I/O), everything else empty. View-As is intentionally NOT
+   * honored in this mode (no caps to gate the impersonation with), so
+   * `viewing === actor` always.
+   *
+   * ONLY honored with `require: 'any'` — sudo/botOwner gates need the
+   * real capability map, so anything stricter forces full resolution
+   * regardless of this flag. Use for hot, frequently-polled endpoints
+   * whose handler never reads capabilities (health pills, CSRF
+   * issuance, push config) so a 30s poll doesn't cost two Postgres
+   * round-trips per client. Defaults to true (full resolution).
+   */
+  resolveCaps?: boolean
 }
 
 // ─── In-memory rate-limit bucket store ──────────────────────────────
@@ -74,6 +91,27 @@ function checkRateLimit(key: string, points: number, perSeconds: number): boolea
   live.push(now)
   buckets.set(key, live)
   return true
+}
+
+/**
+ * Session-only AccessMap for `resolveCaps: false` routes. No I/O — the
+ * identity comes straight from the JWT and `botOwner` is a pure env
+ * compare. Capabilities are all empty, which is strictly LESS privilege
+ * than full resolution would grant, so this can never widen access.
+ */
+function sessionOnlyAccess(session: Session): AccessMap {
+  const identity = {
+    id: session.id,
+    username: session.username,
+    avatar: session.avatar ?? null,
+  }
+  return {
+    actor: identity,
+    viewing: identity,
+    botOwner: session.id === env.BOT_OWNER_ID,
+    squishy: { sudo: false, voiceChannels: [], canSelfEdit: true },
+    otter: { businesses: {} },
+  }
 }
 
 function defaultRateLimitKey(req: NextRequest, access: AccessMap): string {
@@ -105,8 +143,17 @@ export function withAuth<T extends unknown[]>(
     // is silently ignored (no privilege escalation), and self-View-As
     // short-circuits to the real identity. Worst-case for a forged
     // cookie on a non-sudo session is a no-op.
-    const viewAsUserId = getViewAsUserIdFromRequest(req)
-    const access = await resolveAccess(session, viewAsUserId ? { viewAsUserId } : undefined)
+    //
+    // `resolveCaps: false` (only honored for `require: 'any'`) skips the
+    // capability lookups entirely — see WithAuthOptions for the contract.
+    const skipCaps = opts?.resolveCaps === false && required === 'any'
+    let access: AccessMap
+    if (skipCaps) {
+      access = sessionOnlyAccess(session)
+    } else {
+      const viewAsUserId = getViewAsUserIdFromRequest(req)
+      access = await resolveAccess(session, viewAsUserId ? { viewAsUserId } : undefined)
+    }
 
     const passes =
       required === 'any'

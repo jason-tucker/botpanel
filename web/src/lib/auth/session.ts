@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { SignJWT, jwtVerify } from 'jose'
 import { randomBytes } from 'node:crypto'
@@ -94,7 +95,15 @@ export async function clearSessionCookie(): Promise<void> {
   })
 }
 
-export async function getSession(): Promise<Session | null> {
+/**
+ * Per-request memoized via React `cache()`: the `(dashboard)` layout and
+ * every page under it each call `getSession()` in the same render pass,
+ * so without the memo we verify the same JWT twice per navigation. The
+ * cookie can't change mid-render (the only mutators are route handlers,
+ * where React's cache scope is absent and the function runs uncached —
+ * identical to the previous behaviour), so memoizing is safe.
+ */
+export const getSession = cache(async (): Promise<Session | null> => {
   if (!env.SESSION_SECRET) return null
   const c = await cookies()
   const token = c.get(COOKIE_NAME)?.value
@@ -105,4 +114,4 @@ export async function getSession(): Promise<Session | null> {
   } catch {
     return null
   }
-}
+})

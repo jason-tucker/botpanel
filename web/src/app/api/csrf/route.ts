@@ -35,5 +35,7 @@ export const GET = withAuth(
       },
     )
   },
-  { require: 'any', csrf: false },
+  // `resolveCaps: false` — issuing a token only needs "logged in"; the
+  // handler never reads capabilities, so skip the Postgres/RPC lookups.
+  { require: 'any', csrf: false, resolveCaps: false },
 )
