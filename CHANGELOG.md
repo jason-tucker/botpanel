@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Docs
+- docs: add mandatory Agent usage policy to CLAUDE.md; correct `withAuth` signature, Redis event mechanism (replace phantom `events/bus.ts` with real `publishInvalidate`), deployment section (one-tag/one-clone, rollback note), Stack (custom UI kit, no shadcn/radix), Auth model (V2 flags for team-list and SUDO_ROLE_IDS), panel-owned schema notes, local dev commands, env vars table, and CHANGELOG style note.
+
 ### Fixed
 - **View-As Exit / Sign out / OAuth-state now actually clear their cookies (critical).** All three cookies use the `__Host-` prefix, whose spec requires every `Set-Cookie` (including the one that clears it) to carry `Secure` + `Path=/`. `cookies().delete(name)` emits a bare expiry without those attributes, so the browser **silently rejected the deletion** — Exit View-As returned 200 but left `__Host-view-as` in place (operator stuck impersonating, only a manual cookie-clear escaped), and `clearSessionCookie()` left `__Host-session` in place (logout didn't truly sign you out). Replaced `c.delete()` with an explicit overwrite-with-expiry (`maxAge: 0` + the same `secure`/`sameSite`/`path` attributes) in `clearViewAsCookie` (`viewAs.ts`), `clearSessionCookie` (`session.ts`), and the OAuth-state cleanup (`auth/callback`). Pre-existing bug surfaced now that the refreshed shell makes View-As prominent.
 
