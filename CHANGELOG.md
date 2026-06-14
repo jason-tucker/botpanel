@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Docs
+- docs: add mandatory Agent usage policy to CLAUDE.md; correct `withAuth` signature, Redis event mechanism (replace phantom `events/bus.ts` with real `publishInvalidate`), deployment section (one-tag/one-clone, rollback note), Stack (custom UI kit, no shadcn/radix), Auth model (V2 flags for team-list and SUDO_ROLE_IDS), panel-owned schema notes, local dev commands, env vars table, and CHANGELOG style note.
+
 ### Changed — performance & reliability pass
 - **Capability resolution now runs in one parallel round and is memoized per request.** `resolveAccess()`'s three backing lookups (`sudo_users` check, `auto_channels` voice ownership, otter `business.user_ranks` RPC) previously ran sudo-first-then-the-rest; they now run in a single `Promise.all`, the `sudo_users` query is skipped entirely when `SUDO_USER_IDS` already grants sudo, and the per-user capability load is wrapped in React `cache()` so the `(dashboard)` layout + page (which each resolve access in the same render pass by design) share one set of Postgres/RPC round-trips per navigation instead of two. Route handlers are unaffected (React's cache scope is absent there — same behaviour as before). `SUDO_USER_IDS` is also parsed once at module load instead of per call.
 - **`getSession()` memoized per request** via React `cache()` — layout + page no longer verify the same session JWT twice per navigation. Route handlers (the only places that mutate the session cookie) run uncached, exactly as before.

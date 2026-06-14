@@ -34,6 +34,32 @@ Every write API route calls `writeAudit(...)` with `actor`, `viewing` (impersona
 
 ---
 
+## Agent usage
+
+Always spawn agents to do work. Haiku for lookups. Sonnet for coding. Opus for planning.
+
+Use agents proactively — delegation is the default, not a fallback. Match the model to the task:
+
+- **Haiku** — file discovery, repository searches, quick lookups, lightweight analysis, and simple verification.
+- **Sonnet** — coding, implementation, refactoring, debugging, writing tests, editing documentation, and normal technical work.
+- **Opus** — architecture, complex planning, cross-repository strategy, high-risk changes, difficult debugging strategy, and final reconciliation.
+
+How to delegate well:
+
+- Run independent work in parallel; serialize only when there is a real dependency.
+- Give every delegated task a precise scope and a concrete expected output.
+- Require every agent to cite the paths, symbols, commands, or repository evidence behind its conclusions.
+- Demand actionable results, not generic summaries.
+- Never let two agents edit the same file at once — assign explicit file ownership and coordinate overlaps through the orchestrator.
+- Resolve conflicting recommendations with repository evidence, not preference.
+- Validate every agent's output before accepting it; re-run or re-scope on doubt.
+- Use agents to improve speed or quality — not to create pointless duplication.
+- The orchestrator reviews all delegated work and remains responsible for final correctness.
+
+All `src/` paths in this document are relative to `web/` (e.g. `src/lib/auth/perms.ts` → `web/src/lib/auth/perms.ts`).
+
+---
+
 ## Architecture overview
 
 ```
@@ -60,16 +86,16 @@ The original cloudflared container had its TUNNEL_TOKEN baked into env at
 create time; a recreate wiped it and the tunnel went dark. Lesson: ingress
 containers must outlive the application stacks they front.
 
-Token lives in `/home/botuser/cloudflared/.env` (chmod 600). One cloudflared
-fronts both prod and dev clones — Cloudflare ingress rules point at
-`localhost:6080` (prod) and `localhost:6081` (dev), and `--network host`
-makes those addresses reach the Caddy containers bound to those loopback
-ports. See the comment block in `docker-compose.yml` for the exact
-`docker run` command.
+Token lives in `/home/botuser/cloudflared/.env` (chmod 600). `--network host`
+makes the Cloudflare ingress rule's `localhost:6080` reach the loopback-bound
+Caddy. See the comment block in `docker-compose.yml` for the exact
+`docker run` command. (The dev clone at `localhost:6081` was removed in issue #196;
+any `:dev` image references or `dev-bots.tucker.host` ingress rules in cloudflared
+are stale.)
 
 ## Stack (locked)
 
-- Next.js 15 App Router · React · TypeScript · Tailwind · shadcn/ui
+- Next.js 15 App Router · React · TypeScript · Tailwind · a custom UI kit (`web/src/components/ui/`) — no shadcn/radix component library; icons are mostly bespoke inline-SVG (`web/src/components/ui/icons.tsx`), with `lucide-react` (a runtime dependency) used for a few glyphs (e.g. `ExternalLink` in the OC/MKE/automation pages)
 - Drizzle ORM · postgres-js · zod · ioredis · jose (JWT)
 - Caddy 2 in front · cloudflared for ingress
 
@@ -77,8 +103,8 @@ ports. See the comment block in `docker-compose.yml` for the exact
 
 `src/lib/auth/perms.ts` exports a single `resolveAccess(session, opts?: { viewAsUserId?: string })` that returns a flat capabilities map. Every API route + page reads this. **Do not invent new tier enums** — capabilities are explicit.
 
-- **Bot owner** = `BOT_OWNER_ID` env (default `117501528641634310`) + Application Team Admins/Developers (resolved via Redis `cmd.squishy.team.list` command bus verb in V2).
-- **Squishy sudo** = env user/role IDs + `sudo_users` table.
+- **Bot owner** = `BOT_OWNER_ID` env (default `117501528641634310`). **[V2 — not yet implemented]**: Application Team Admins/Developers resolved via Redis `cmd.squishy.team.list` command bus verb.
+- **Squishy sudo** = `SUDO_USER_IDS` env (comma-separated Discord IDs) + `sudo_users` DB table. `SUDO_ROLE_IDS` (role-based check) is a `TODO(V2)` in `src/lib/auth/perms.ts` — needs a Discord member fetch and is not yet live.
 - **Voice owner/host/acting-owner** = `auto_channels` row check.
 - **Otter business owner/manager/employee** = `business_owners` + `business_role_mappings` rank.
 - **OC stock editor** / **Caked manager** / **MKE staff** = derived from business role mappings.
@@ -100,26 +126,63 @@ The panel-side client lives in `src/lib/botrpc.ts`: `await callBot<T>(bot, verb,
 
 | What | Where |
 |---|---|
-| New API route | `src/app/api/<bot>/<resource>/route.ts` — wrap in `withAuth(handler, { tier, scope? })` |
+| New API route | `src/app/api/<bot>/<resource>/route.ts` — wrap in `withAuth(handler, { require?: 'any' \| 'sudo' \| 'botOwner', csrf?: boolean, rateLimit?: RateLimitSpec })` |
 | New page | `src/app/<bot>/<area>/page.tsx` — gate via `resolveAccess(session)` in the layout |
 | New DB query | `src/lib/db/{squishy,otter}.ts` — Drizzle clients, vendored schemas under `src/lib/db/schema/` |
-| New Redis event subscriber | `src/lib/events/bus.ts` — typed via zod in `src/lib/events/types.ts` |
-| New command-bus verb | Add the request/reply types in `src/lib/events/types.ts`, the client helper in `src/lib/botrpc.ts`, and the handler in the bot repo |
+| Cache-invalidation event | Call `publishInvalidate(bot, { table, key? })` from `src/lib/events/invalidate.ts` after any panel write that mutates a bot-cached row. The matching handler in the bot repo's `eventBus.ts` receives the HMAC-signed event on `bot.<botname>.settings.invalidate` and drops the cache entry. There is no general event-bus file — only this targeted invalidation helper. |
+| New command-bus verb | Add the client call in `src/lib/botrpc.ts` (`callBot(bot, verb, params)`) and the handler in the bot repo |
 | New audit hook | `src/lib/audit.ts` — call `writeAudit({...})` from the route handler |
 
 ## Schema sync
 
 Bot schemas live in the bot repos. Panel uses **vendored copies** under `src/lib/db/schema/{squishy,otter}/`, kept in sync by `scripts/sync-schema.sh`. A CI step (`pnpm verify:schemas`) re-runs the sync and fails on diff — drift becomes a one-line PR, not a silent bug.
 
-**Botpanel never runs `drizzle-kit generate` or `db:migrate`.** Migrations are owned by the bot repos.
+**Botpanel never runs `drizzle-kit generate` or `db:migrate` for the bot schemas** — migrations are owned by the bot repos.
+
+**Panel-owned tables:** besides the vendored bot schemas, the panel owns `web/src/lib/db/schema/panel/` (`panel_sessions`, `push_subscriptions`). Their SQL lives in `web/src/lib/db/migrations/` (e.g. `0001_panel_sessions_aead.sql`, `0001_push_subscriptions.sql`) and is applied manually (`psql "$SQUISHY_DATABASE_URL" -f …`) or lazily via `CREATE TABLE IF NOT EXISTS`. The panel does not use drizzle-kit for these either — they are hand-written SQL applied once.
+
+## Local dev
+
+```bash
+cd web
+pnpm install
+cp ../.env.example ../.env   # fill in the vars
+pnpm dev                     # Next.js dev server on :3000
+```
+
+`pnpm build` and `pnpm typecheck` are CI-only — they OOM the VPS (rule 2). After a bot schema change, run `pnpm sync:schemas`; the CI gate is `pnpm verify:schemas`. There is no test suite and no `lint` script.
+
+## Environment variables
+
+Key vars parsed in `src/lib/env.ts` (full list in `.env.example`):
+
+| Var | Notes |
+|---|---|
+| `SESSION_SECRET` | ≥ 32 chars; HS512 JWT signing key. Required for login. |
+| `OAUTH_TOKEN_KEY` | 32 bytes as 64 hex chars (`openssl rand -hex 32`). AES-256-GCM for Discord refresh-token encryption at rest. |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Discord OAuth. Without them `/api/auth/login` is disabled. |
+| `BOT_OWNER_ID` | Discord snowflake; defaults to original owner. |
+| `SUDO_USER_IDS` | Comma-separated snowflakes for implicit Squishy sudo (env path). |
+| `GUILD_ID` | The guild the bots serve. |
+| `PUBLIC_BASE_URL` | Cookie domain / OAuth redirect / CSRF origin. Never hardcoded. |
+| `REDIS_URL` | Defaults to `redis://redis:6379`. |
+| `BOTPANEL_RPC_SECRET` | HMAC key for the command bus; **must match both bot repos**. |
+| `SQUISHY_DATABASE_URL` / `OTTER_DATABASE_URL` | Postgres connections (lazy — app boots without them). |
+| `AUDIT_HASH_SALT` | Salt for IP/UA hashing in audit rows. Set a long random value in prod. |
+| `VAPID_PUBLIC` / `VAPID_PRIVATE` / `VAPID_SUBJECT` | Web Push (VAPID). All three needed for push; otherwise subscribe routes return 503. |
 
 ## Deployment
 
-Two floating tags, two clones, one watchtower.
+One floating tag, one clone, one watchtower.
 
-- **`dev` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:dev` → watchtower auto-pulls → `/home/botuser/projects/botpanel-dev/` (port 6081, served at `dev-bots.tucker.host`).
-- **`main` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:latest` → watchtower auto-pulls → `/home/botuser/projects/botpanel/` (port 6080, served at `bots.tucker.host/`).
+- **`main` branch** → CI builds `ghcr.io/jason-tucker/botpanel{,-web}:latest` and `:<sha>` → watchtower auto-pulls `:latest` → `/home/botuser/projects/botpanel/` (port 6080, served at `bots.tucker.host`).
 
-Touched containers restart; untouched ones keep running. The dev clone is **not** a separate redis/db world — it shares prod's botpanel-net, redis, and bot Postgres. The separation is only at the Caddy + Next.js + landing layer (per-clone `NEXT_ALIAS` / `NEXT_HOST` env vars give each clone a unique alias on botpanel-net).
+The dev branch/clone/`:dev` tag/port 6081/`dev-bots.tucker.host` were removed (issue #196) — pre-merge CI on PRs now provides the validation the dev clone used to provide.
+
+**Rollback:** pin a previous `:<sha>` image tag in `.env` (`BOT_IMAGE` / `NEXT_IMAGE`), then `docker compose pull && docker compose up -d`. Watchtower only follows floating tags (`:latest`), so a pinned SHA stays until you change it back.
 
 See rule 6 above for the branch flow that drives this.
+
+## CHANGELOG style note
+
+This repo deliberately uses `## [Unreleased]` (accumulating under that heading until a release is cut). This is intentional and specific to botpanel — do not "fix" it to match sibling repos that use dated semver headings immediately.
