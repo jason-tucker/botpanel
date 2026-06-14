@@ -80,7 +80,7 @@ jobs:
           fi
 
       - name: Build and push Caddy ingress image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -95,7 +95,7 @@ jobs:
           cache-to: type=gha,scope=caddy,mode=max
 
       - name: Build and push Next.js dashboard image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./web
           file: ./web/Dockerfile
