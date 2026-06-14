@@ -64,12 +64,12 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout botpanel
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.BOTPANEL_DISPATCH_PAT }}
 
       - name: Checkout squishybot
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: jason-tucker/squishybot
           # Pin to the triggering sha when squishybot was the source; otherwise main.
@@ -78,7 +78,7 @@ jobs:
           token: ${{ secrets.BOTPANEL_DISPATCH_PAT }}
 
       - name: Checkout otterbot
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: jason-tucker/otterbot
           ref: ${{ steps.in.outputs.source_repo == 'otterbot' && steps.in.outputs.source_ref || 'main' }}
