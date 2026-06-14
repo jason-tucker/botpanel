@@ -79,32 +79,38 @@ async function loadBusinesses(opts: {
     const ownerCounts = new Map<string, number>()
     const mappingCounts = new Map<string, number>()
 
-    try {
-      const ownerAgg = await otterDb
+    // The two aggregates are independent — run them in parallel rather
+    // than back-to-back. `allSettled` keeps the old per-query degrade
+    // behaviour: one failing count leaves the other intact.
+    const [ownerRes, mapRes] = await Promise.allSettled([
+      otterDb
         .select({
           businessId: businessOwners.businessId,
           n: sql<number>`count(*)::int`,
         })
         .from(businessOwners)
         .where(inArray(businessOwners.businessId, ids))
-        .groupBy(businessOwners.businessId)
-      for (const r of ownerAgg) ownerCounts.set(r.businessId, Number(r.n))
-    } catch (err) {
-      console.warn('[otter/businesses] owner count agg failed', err)
-    }
-
-    try {
-      const mapAgg = await otterDb
+        .groupBy(businessOwners.businessId),
+      otterDb
         .select({
           businessId: businessRoleMappings.businessId,
           n: sql<number>`count(*)::int`,
         })
         .from(businessRoleMappings)
         .where(inArray(businessRoleMappings.businessId, ids))
-        .groupBy(businessRoleMappings.businessId)
-      for (const r of mapAgg) mappingCounts.set(r.businessId, Number(r.n))
-    } catch (err) {
-      console.warn('[otter/businesses] mapping count agg failed', err)
+        .groupBy(businessRoleMappings.businessId),
+    ])
+
+    if (ownerRes.status === 'fulfilled') {
+      for (const r of ownerRes.value) ownerCounts.set(r.businessId, Number(r.n))
+    } else {
+      console.warn('[otter/businesses] owner count agg failed', ownerRes.reason)
+    }
+
+    if (mapRes.status === 'fulfilled') {
+      for (const r of mapRes.value) mappingCounts.set(r.businessId, Number(r.n))
+    } else {
+      console.warn('[otter/businesses] mapping count agg failed', mapRes.reason)
     }
 
     return { rows: filtered, ownerCounts, mappingCounts }

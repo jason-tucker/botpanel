@@ -15,6 +15,7 @@
  * DB unavailable: every DB call is wrapped — a downed Postgres degrades
  * to "empty capabilities" rather than 500-ing the whole panel.
  */
+import { cache } from 'react'
 import { sql } from 'drizzle-orm'
 import { env } from '../env'
 import type { Session } from './session'
@@ -57,14 +58,14 @@ function identityOf(s: SessionPayload): Identity {
   }
 }
 
-function sudoEnvIds(): Set<string> {
-  if (!env.SUDO_USER_IDS) return new Set()
-  return new Set(
-    env.SUDO_USER_IDS.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
-}
+// Parsed once at module load — env is immutable for the process lifetime,
+// so re-splitting the same string on every resolveAccess() call was waste.
+const ENV_SUDO_IDS: ReadonlySet<string> = new Set(
+  (env.SUDO_USER_IDS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+)
 
 async function checkSudoDb(userId: string): Promise<boolean> {
   try {
@@ -112,6 +113,18 @@ async function loadVoiceChannels(userId: string): Promise<string[]> {
 // granting someone a role sees the effect within a minute on the panel.
 const otterRanksCache = new Map<string, { ranks: Record<string, BusinessRank>; expiresAt: number }>()
 const OTTER_RANKS_TTL_MS = 60_000
+// Expired entries used to linger forever (reads delete-on-miss only for
+// the key being read), so the map grew one stale entry per distinct
+// visitor for the process lifetime. Sweep opportunistically on insert
+// once the map is non-trivially sized — O(n) on a small map, amortized.
+const OTTER_RANKS_SWEEP_THRESHOLD = 256
+
+function sweepOtterRanksCache(now: number): void {
+  if (otterRanksCache.size < OTTER_RANKS_SWEEP_THRESHOLD) return
+  for (const [key, entry] of otterRanksCache) {
+    if (entry.expiresAt <= now) otterRanksCache.delete(key)
+  }
+}
 
 async function loadOtterBusinesses(userId: string): Promise<Record<string, BusinessRank>> {
   const now = Date.now()
@@ -147,6 +160,7 @@ async function loadOtterBusinesses(userId: string): Promise<Record<string, Busin
         out[slug] = rank
       }
     }
+    sweepOtterRanksCache(now)
     otterRanksCache.set(userId, { ranks: out, expiresAt: now + OTTER_RANKS_TTL_MS })
     return out
   } catch (err) {
@@ -155,40 +169,62 @@ async function loadOtterBusinesses(userId: string): Promise<Record<string, Busin
   }
 }
 
-/**
- * Resolve the capability map for `subject`. Internal — `resolveAccess` is
- * the public entry that also handles View-As.
- */
-async function resolveFor(subject: Identity): Promise<{
+type ResolvedCaps = {
   botOwner: boolean
   squishy: AccessMap['squishy']
   otter: AccessMap['otter']
-}> {
+}
+
+/**
+ * Resolve the capability map for a user id. All three backing lookups
+ * (sudo table, voice-channel ownership, otter business ranks) are
+ * independent, so they run in a single parallel round instead of the
+ * old sudo-first-then-the-rest sequence. When the env list already
+ * grants sudo we skip the `sudo_users` query entirely — env wins
+ * regardless of what the table says.
+ */
+async function resolveCapsUncached(userId: string): Promise<ResolvedCaps> {
   // TODO(V2): bot owner === BOT_OWNER_ID OR member of the Discord
   // Application Team (Admins + Developers), resolved over the Redis
   // command bus via `cmd.squishy.team.list`. For now, single-user env.
-  const botOwner = subject.id === env.BOT_OWNER_ID
+  const botOwner = userId === env.BOT_OWNER_ID
 
-  const envSudo = sudoEnvIds().has(subject.id)
   // TODO(V2): SUDO_ROLE_IDS — needs a Discord member fetch to check
   // roles; deferred until we have the bot RPC for guild member lookup.
-  const dbSudo = await checkSudoDb(subject.id)
-  const sudo = envSudo || dbSudo
+  const envSudo = ENV_SUDO_IDS.has(userId)
 
-  const [voiceChannels, businesses] = await Promise.all([
-    loadVoiceChannels(subject.id),
-    loadOtterBusinesses(subject.id),
+  const [dbSudo, voiceChannels, businesses] = await Promise.all([
+    envSudo ? Promise.resolve(true) : checkSudoDb(userId),
+    loadVoiceChannels(userId),
+    loadOtterBusinesses(userId),
   ])
 
   return {
     botOwner,
     squishy: {
-      sudo,
+      sudo: envSudo || dbSudo,
       voiceChannels,
       canSelfEdit: true,
     },
     otter: { businesses },
   }
+}
+
+/**
+ * Per-request memoization via React `cache()`. The `(dashboard)` layout
+ * resolves access for the sidebar, then the page resolves it again for
+ * its own gate — both in the same React render pass, so this collapses
+ * the duplicate Postgres/RPC round-trips into one. Outside a render
+ * (API route handlers) React falls back to calling the function
+ * directly, which is exactly the previous behaviour. The memo key is
+ * the user id (a string), so actor + View-As target are cached
+ * independently. NEVER cross-request: React drops the cache with the
+ * request, so capability changes are picked up on the next navigation.
+ */
+const resolveCaps = cache(resolveCapsUncached)
+
+async function resolveFor(subject: Identity): Promise<ResolvedCaps> {
+  return resolveCaps(subject.id)
 }
 
 export async function resolveAccess(

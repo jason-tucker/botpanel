@@ -96,12 +96,22 @@ export async function resolveUsernames(
 
   // The bot caps per-call payload at 100 ids. Split into chunks rather
   // than rejecting — large audit pages can easily reference hundreds of
-  // distinct actors over time.
+  // distinct actors over time. Chunks are independent requests, so fire
+  // them in parallel: on a cold cache a 300-user page costs one RPC
+  // round-trip instead of three back-to-back (and worst-case timeouts
+  // overlap instead of stacking).
   const missArr = Array.from(misses)
   const CHUNK = 100
+  const chunks: string[][] = []
   for (let i = 0; i < missArr.length; i += CHUNK) {
-    const chunk = missArr.slice(i, i + CHUNK)
-    const reply = await callBot<ResolveReply>(bot, 'users.resolve', { userIds: chunk })
+    chunks.push(missArr.slice(i, i + CHUNK))
+  }
+  const replies = await Promise.all(
+    chunks.map((chunk) => callBot<ResolveReply>(bot, 'users.resolve', { userIds: chunk })),
+  )
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]
+    const reply = replies[i]
     if (!reply.ok) {
       // RPC down / timeout. Don't cache absence — a retry next render
       // might succeed (e.g. the bot was briefly restarting). Callers
