@@ -124,6 +124,7 @@ export function buildNav(
             { href: '/squishy/members', label: 'Members', icon: 'members', keywords: 'directory roles' },
             { href: '/squishy/automation', label: 'Automation', icon: 'automation', keywords: 'reaction roles auto threads socials' },
             { href: '/squishy/roles', label: 'Roles', icon: 'roles', keywords: 'color staff' },
+            { href: '/squishy/self-assign-roles', label: 'Self-assign roles', icon: 'roles', keywords: 'self assign reaction roles embed button games auto join' },
           ],
         },
         {
