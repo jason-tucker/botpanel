@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- feat: add Self-assign Roles page (`/squishy/self-assign-roles`) with channel picker, add-role/game entry form (auto-join roles highlighted for quick-add), entry list with enable/disable toggle, move up/down reorder, and remove; Publish button surfaces `{posted, removed}` result; five API routes (`POST`, `PATCH/DELETE /[id]`, `/channel`, `/publish`, `/reorder`) all sudo-gated with CSRF, rate-limit, and `writeAudit` on success and failure.
+
 ### Docs
 - docs: add mandatory Agent usage policy to CLAUDE.md; correct `withAuth` signature, Redis event mechanism (replace phantom `events/bus.ts` with real `publishInvalidate`), deployment section (one-tag/one-clone, rollback note), Stack (custom UI kit, no shadcn/radix), Auth model (V2 flags for team-list and SUDO_ROLE_IDS), panel-owned schema notes, local dev commands, env vars table, and CHANGELOG style note.
 
