@@ -146,9 +146,11 @@ Pages call `resolveAccess()` directly in the `(dashboard)` layout — they need 
 | `/squishy/games` | sudo | Game catalog editor: role/channel links, inline "+ Create" + auto-provision, "Post LFG" per row. |
 | `/squishy/settings`, `/squishy/welcome` | sudo | `bot_settings` editor (per-key numeric bounds enforced), welcome/goodbye with live preview. |
 | `/squishy/roles`, `/squishy/automation`, `/squishy/hubs`, `/squishy/archives` | sudo | Reaction roles, auto-join/color roles, auto-thread + social feeds, hub channels + lockdown, archives. |
+| `/squishy/self-assign-roles` | sudo | Self-assign role board editor: channel picker, add-role/game entries (auto-join roles highlighted), enable/disable + reorder, Publish to post/refresh the toggle-button embeds. |
+| `/squishy/game-night` | sudo | Game Night scheduler: design a Components-V2 post in the shared message editor, target a channel, post now or schedule for later; list shows scheduled/posted/failed/canceled with send-now/edit/delete. |
 | `/squishy/members`, `/squishy/members/[id]`, `/squishy/profiles` | sudo | Member browser + per-member detail (games, color role, sudo grant), profiles. |
 | `/squishy/audit`, `/audit` | sudo | Audit tail (live via SSE). |
-| `/otter/businesses`, `/otter/businesses/[slug]` (+ `notes`, `standings`, `audit`) | business owner/manager/employee | Business management: roster hire/fire/promote/demote, owners, role mappings, notes, standings, role sync. |
+| `/otter/businesses`, `/otter/businesses/[slug]` (+ `notes`, `standings`, `audit`) | business owner/manager/employee | Business management: roster hire/fire/promote/demote, owners, role mappings, notes, standings, role sync, custom command buttons editor (Link/Info buttons on `/oc`/`/caked`/`/info`). |
 | `/otter/oc-stock`, `/otter/caked`, `/otter/mke` | OC/Caked/MKE staff | OC stock editor + public post, Caked/OC channel messages, MKE surface (lookups link out). |
 | `/sudo`, `/sudo/debug`, `/sudo/rpc-test` | sudo / bot-owner | Sudo console: staff approvals, sudo-user management, View-As, admin tools (orphan scan, reconciler, reload caches), push opt-in, and a bot-owner RPC round-trip smoke test. |
 
