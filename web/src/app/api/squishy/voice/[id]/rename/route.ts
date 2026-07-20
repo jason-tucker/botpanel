@@ -74,6 +74,25 @@ export const POST = withAuth(
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
+    // Static-channel companions (`source_hub_id = 'static'`) keep their name
+    // forever — the bot refuses the verb too; fail fast with a clear message.
+    if (record.sourceHubId === 'static') {
+      await writeAudit({
+        bot: 'squishy',
+        action: 'voice.rename',
+        actor: access.actor,
+        viewing: access.viewing,
+        targetType: 'auto_channels',
+        targetId: voiceChannelId,
+        success: false,
+        errorMessage: 'static-channel',
+      }).catch(() => {})
+      return NextResponse.json(
+        { error: 'Static channels cannot be renamed' },
+        { status: 400 },
+      )
+    }
+
     const reply = await callBot('squishy', 'voice.rename', {
       voiceChannelId,
       newName,

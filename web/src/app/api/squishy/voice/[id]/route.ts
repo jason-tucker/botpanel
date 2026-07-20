@@ -58,6 +58,25 @@ export const DELETE = withAuth(
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
+    // Static-channel companions (`source_hub_id = 'static'`) are permanent —
+    // the bot refuses the verb too; fail fast here with a clear message.
+    if (record.sourceHubId === 'static') {
+      await writeAudit({
+        bot: 'squishy',
+        action: 'voice.delete',
+        actor: access.actor,
+        viewing: access.viewing,
+        targetType: 'auto_channels',
+        targetId: voiceChannelId,
+        success: false,
+        errorMessage: 'static-channel',
+      }).catch(() => {})
+      return NextResponse.json(
+        { error: 'Static channels cannot be deleted' },
+        { status: 400 },
+      )
+    }
+
     const reply = await callBot('squishy', 'voice.delete', {
       voiceChannelId,
       actorUserId: access.viewing.id,
