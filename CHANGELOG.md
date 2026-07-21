@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - feat: voice dashboard hides Rename/Delete controls for static voice channels (`source_hub_id = 'static'`), showing a "Static channel — name and channel are permanent" note and a "Static" badge on the card instead; `isStatic` flag added to the `/api/squishy/voice/list` snapshot.
 - feat: `POST /api/squishy/voice/[id]/rename` and `DELETE /api/squishy/voice/[id]` now reject static channels with a 400 ("Static channels cannot be renamed/deleted") before the bot RPC, with audit rows on each rejection.
+- chore: re-vendor squishy schemas — picks up the new `auto_channel_logs` table (squishybot #158) that `verify-schemas` flagged as drift.
 - feat: add Self-assign Roles page (`/squishy/self-assign-roles`) with channel picker, add-role/game entry form (auto-join roles highlighted for quick-add), entry list with enable/disable toggle, move up/down reorder, and remove; Publish button surfaces `{posted, removed}` result; five API routes (`POST`, `PATCH/DELETE /[id]`, `/channel`, `/publish`, `/reorder`) all sudo-gated with CSRF, rate-limit, and `writeAudit` on success and failure.
 - docs: update README panel-areas table with the `/squishy/self-assign-roles` and `/squishy/game-night` pages (both shipped, previously undocumented) and note the `/otter/businesses/[slug]` custom command buttons editor.
 
