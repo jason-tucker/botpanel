@@ -21,6 +21,8 @@
  *  - Transfer / Delete — owner-or-sudo (the API routes enforce this; we
  *    surface the buttons unconditionally and let the server's 403 land
  *    in the form error banner if a host clicks them).
+ *  - Static channels (`isStatic`) never show Rename or Delete — the voice
+ *    channel is permanent; the API routes also 400 those verbs.
  */
 import Image from 'next/image'
 import { useState } from 'react'
@@ -93,6 +95,11 @@ export type VoiceControlsProps = {
   members: { userId: string }[]
   locked: boolean
   hidden: boolean
+  /**
+   * Static-channel companion — the voice channel itself is permanent, so
+   * Rename and Delete are hidden (and rejected server-side).
+   */
+  isStatic: boolean
   onMutated?: () => void
   /**
    * Optional userId → display chip data. Threaded through from VoiceLive
@@ -142,7 +149,13 @@ export function VoiceControls(props: VoiceControlsProps): React.JSX.Element {
       >
         <div className="min-h-0 overflow-hidden">
           <div className="flex flex-col gap-4 px-4 pb-4">
-            <RenameForm {...props} />
+            {props.isStatic ? (
+              <p className="text-xs text-ink-dim">
+                Static channel — name and channel are permanent.
+              </p>
+            ) : (
+              <RenameForm {...props} />
+            )}
             <ToggleRow {...props} />
             <HostsList
               voiceChannelId={props.voiceChannelId}
@@ -153,7 +166,7 @@ export function VoiceControls(props: VoiceControlsProps): React.JSX.Element {
             />
             <TransferForm {...props} />
             <DisconnectList {...props} />
-            <DeleteButton {...props} />
+            {!props.isStatic && <DeleteButton {...props} />}
           </div>
         </div>
       </div>

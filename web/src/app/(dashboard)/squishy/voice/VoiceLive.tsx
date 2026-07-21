@@ -40,6 +40,13 @@ type Channel = {
   hostUserIds: string[]
   locked: boolean
   hidden: boolean
+  /**
+   * Static-channel companion (`source_hub_id = 'static'`) — the voice
+   * channel is permanent, so rename/delete controls are never offered.
+   * Comes from the snapshot only; SSE deltas all spread the existing
+   * channel so the flag survives merges.
+   */
+  isStatic: boolean
   createdAt: string
   members: Member[]
   canControl: boolean
@@ -101,6 +108,11 @@ function applyCreated(map: Map<string, Channel>, p: Record<string, unknown>): Ma
     hostUserIds: [],
     locked: false,
     hidden: false,
+    // SSE `channel_created` payloads don't carry the static flag — only the
+    // snapshot derives it from `source_hub_id`. False is safe: `canControl`
+    // is also false for SSE-born cards, so no controls render before the
+    // next snapshot refetch fills both in for real.
+    isStatic: false,
     createdAt: asString(p.ts) ?? new Date().toISOString(),
     members: [],
     // New cards arriving via SSE don't carry the viewer's control flag — only
@@ -544,6 +556,11 @@ function ChannelCard({
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {channel.isStatic && (
+            <span className="rounded-full bg-bg-card2 border border-line px-2.5 py-0.5 text-xs">
+              Static
+            </span>
+          )}
           {channel.locked && (
             <span className="rounded-full bg-bg-card2 border border-line px-2.5 py-0.5 text-xs">
               Locked
@@ -566,6 +583,7 @@ function ChannelCard({
               members={channel.members}
               locked={channel.locked}
               hidden={channel.hidden}
+              isStatic={channel.isStatic}
               onMutated={onMutated}
               resolved={resolved}
             />

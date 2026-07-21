@@ -33,6 +33,12 @@ type ChannelRow = {
   hostUserIds: string[]
   locked: boolean
   hidden: boolean
+  /**
+   * True for static-channel companions (`source_hub_id = 'static'`). The
+   * voice channel itself is permanent — never renamed, never deleted — so
+   * the client hides those controls and the API routes reject the verbs.
+   */
+  isStatic: boolean
   createdAt: string
   members: MemberRow[]
   /**
@@ -100,6 +106,7 @@ export const GET = withAuth(
           hostUserIds: c.hostUserIds,
           locked: c.isLocked,
           hidden: c.isHidden,
+          isStatic: c.sourceHubId === 'static',
           createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : String(c.createdAt),
           members: byChannel.get(c.voiceChannelId) ?? [],
           canControl,
