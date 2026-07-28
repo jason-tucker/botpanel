@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- fix: sync-bot-schema workflow no longer shell-interpolates the triggering bot's commit message (and other `client_payload` fields) inline in `run:` — a commit message containing a double quote broke out of the string and killed the sync run (`+: command not found`); values now pass through `env:`, closing a script-injection vector at the same time.
+- chore: re-vendor otter schemas — picks up the new `report_sessions` table (otterbot #96) that the failed auto-sync run couldn't deliver; unblocks `verify-schemas` on every PR.
 - feat: voice dashboard hides Rename/Delete controls for static voice channels (`source_hub_id = 'static'`), showing a "Static channel — name and channel are permanent" note and a "Static" badge on the card instead; `isStatic` flag added to the `/api/squishy/voice/list` snapshot.
 - feat: `POST /api/squishy/voice/[id]/rename` and `DELETE /api/squishy/voice/[id]` now reject static channels with a 400 ("Static channels cannot be renamed/deleted") before the bot RPC, with audit rows on each rejection.
 - chore: re-vendor squishy schemas — picks up the new `auto_channel_logs` table (squishybot #158) that `verify-schemas` flagged as drift.

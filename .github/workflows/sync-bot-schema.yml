@@ -42,10 +42,20 @@ jobs:
     steps:
       - name: Resolve inputs
         id: in
+        # Payload values go through `env:` — NEVER inline `${{ }}` inside
+        # `run:`. The head commit message is arbitrary text; a message
+        # containing a double quote broke out of the shell string and killed
+        # the run with `+: command not found` (run 30321332643), and inline
+        # interpolation of it is a script-injection vector besides.
+        env:
+          SRC_REPO: ${{ github.event.client_payload.source_repo || inputs.source_repo }}
+          SRC_REF: ${{ github.event.client_payload.source_ref || 'main' }}
+          SCHEMA_DIR: ${{ github.event.client_payload.schema_dir }}
+          MSG: ${{ github.event.client_payload.head_commit_message || 'manual workflow_dispatch' }}
         run: |
-          src_repo="${{ github.event.client_payload.source_repo || inputs.source_repo }}"
-          src_ref="${{ github.event.client_payload.source_ref || 'main' }}"
-          schema_dir="${{ github.event.client_payload.schema_dir }}"
+          src_repo="$SRC_REPO"
+          src_ref="$SRC_REF"
+          schema_dir="$SCHEMA_DIR"
           # workflow_dispatch case: derive schema_dir from source_repo
           if [ -z "$schema_dir" ]; then
             case "$src_repo" in
@@ -54,7 +64,7 @@ jobs:
               *)          schema_dir="unknown" ;;
             esac
           fi
-          msg="${{ github.event.client_payload.head_commit_message || 'manual workflow_dispatch' }}"
+          msg="$MSG"
           {
             echo "source_repo=$src_repo"
             echo "source_ref=$src_ref"
