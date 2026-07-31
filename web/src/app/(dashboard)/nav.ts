@@ -80,6 +80,9 @@ export function buildNav(
     { href: '/me/edit', label: 'Edit my profile', icon: 'edit', keywords: 'name birthday' },
   ]
   if (squishyGuildVisible) {
+    // Squishy-specific self-service entries — gated like /me/games so an
+    // Otter-only user isn't sent to an empty Squishy page.
+    overviewYou.push({ href: '/squishy/stats/me', label: 'My activity', icon: 'stats', keywords: 'stats activity heatmap' })
     overviewYou.push({ href: '/me/games', label: 'My game prefs', icon: 'games', keywords: 'lfg ping roles' })
   }
   const overviewQuick: NavItem[] = []
@@ -131,6 +134,7 @@ export function buildNav(
           heading: 'Operate',
           items: [
             { href: '/squishy/voice', label: 'Active voice', icon: 'voice', keywords: 'channels live' },
+            { href: '/squishy/stats', label: 'Stats', icon: 'stats', keywords: 'activity heatmap analytics leaderboard' },
             { href: '/squishy/archives', label: 'Archives', icon: 'archives' },
             { href: '/squishy/audit', label: 'Audit log', icon: 'audit', keywords: 'history changes' },
           ],

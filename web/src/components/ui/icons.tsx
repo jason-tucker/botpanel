@@ -40,6 +40,7 @@ export type IconName =
   | 'home'
   | 'debug'
   | 'rpc'
+  | 'stats'
   // ui
   | 'search'
   | 'command'
@@ -250,6 +251,13 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="2" />
       <path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14" />
+    </>
+  ),
+  stats: (
+    <>
+      <line x1="5" y1="20" x2="5" y2="12" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="19" y1="20" x2="19" y2="15" />
     </>
   ),
   search: (
