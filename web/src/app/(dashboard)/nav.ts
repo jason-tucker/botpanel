@@ -78,6 +78,7 @@ export function buildNav(
   const overviewYou: NavItem[] = [
     { href: '/me', label: 'Dashboard', icon: 'overview', keywords: 'home me start' },
     { href: '/me/edit', label: 'Edit my profile', icon: 'edit', keywords: 'name birthday' },
+    { href: '/squishy/stats/me', label: 'My activity', icon: 'stats', keywords: 'stats activity heatmap' },
   ]
   if (squishyGuildVisible) {
     overviewYou.push({ href: '/me/games', label: 'My game prefs', icon: 'games', keywords: 'lfg ping roles' })
@@ -131,6 +132,7 @@ export function buildNav(
           heading: 'Operate',
           items: [
             { href: '/squishy/voice', label: 'Active voice', icon: 'voice', keywords: 'channels live' },
+            { href: '/squishy/stats', label: 'Stats', icon: 'stats', keywords: 'activity heatmap analytics leaderboard' },
             { href: '/squishy/archives', label: 'Archives', icon: 'archives' },
             { href: '/squishy/audit', label: 'Audit log', icon: 'audit', keywords: 'history changes' },
           ],
