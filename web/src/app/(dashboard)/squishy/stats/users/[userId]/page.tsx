@@ -60,7 +60,9 @@ function qs(base: { range: string; tz: string }, override: Partial<typeof base>)
 }
 
 function EmojiLabel({ row }: { row: EmojiRow }) {
-  if (row.custom) {
+  // Custom keys must be snowflakes before they're allowed into a CDN URL —
+  // anything else falls through to the text branch instead of a broken image.
+  if (row.custom && /^\d+$/.test(row.emojiKey)) {
     return (
       <span className="inline-flex min-w-0 items-center gap-1.5">
         <Image
@@ -124,7 +126,8 @@ export default async function SquishyStatsUserDetailPage({
 
   const viewAsUserId = await getViewAsUserId()
   const access = await resolveAccess(session, viewAsUserId ? { viewAsUserId } : undefined)
-  const allowed = access.botOwner || access.squishy.sudo || access.viewing.id === userId
+  const isPriv = access.botOwner || access.squishy.sudo
+  const allowed = isPriv || access.viewing.id === userId
   if (!allowed) return <ForbiddenCard />
 
   const sp = await searchParams
@@ -270,7 +273,7 @@ export default async function SquishyStatsUserDetailPage({
             <CardHeader>
               <div>
                 <CardTitle>Top channels</CardTitle>
-                <CardDescription>Blended message + voice activity</CardDescription>
+                <CardDescription>Blended activity — messages + voice minutes</CardDescription>
               </div>
             </CardHeader>
             <CardBody>
@@ -281,9 +284,11 @@ export default async function SquishyStatsUserDetailPage({
                   color="accent"
                   items={stats.topChannels.map((c) => ({
                     label: c.channelName ?? <span className="font-mono text-xs">{c.channelId}</span>,
-                    value: c.messages,
-                    hint: c.voiceSeconds > 0 ? `+ ${formatHours(c.voiceSeconds)} voice` : undefined,
-                    href: `/squishy/stats/channels/${c.channelId}`,
+                    value: Math.round(c.messages + c.voiceSeconds / 60),
+                    hint: `${c.messages.toLocaleString('en-US')} msgs${c.voiceSeconds > 0 ? ` · ${formatHours(c.voiceSeconds)} voice` : ''}`,
+                    // Channel drill-down is sudo-only — a member's own page
+                    // must not be full of links that 403 them.
+                    href: isPriv ? `/squishy/stats/channels/${c.channelId}` : undefined,
                   }))}
                 />
               )}

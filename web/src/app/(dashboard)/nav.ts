@@ -78,9 +78,11 @@ export function buildNav(
   const overviewYou: NavItem[] = [
     { href: '/me', label: 'Dashboard', icon: 'overview', keywords: 'home me start' },
     { href: '/me/edit', label: 'Edit my profile', icon: 'edit', keywords: 'name birthday' },
-    { href: '/squishy/stats/me', label: 'My activity', icon: 'stats', keywords: 'stats activity heatmap' },
   ]
   if (squishyGuildVisible) {
+    // Squishy-specific self-service entries — gated like /me/games so an
+    // Otter-only user isn't sent to an empty Squishy page.
+    overviewYou.push({ href: '/squishy/stats/me', label: 'My activity', icon: 'stats', keywords: 'stats activity heatmap' })
     overviewYou.push({ href: '/me/games', label: 'My game prefs', icon: 'games', keywords: 'lfg ping roles' })
   }
   const overviewQuick: NavItem[] = []

@@ -129,7 +129,12 @@ async function execRows<T = Record<string, unknown>>(query: SQL): Promise<T[]> {
 
 function rangeFilter(range: StatsRange): SQL {
   const start = rangeStartDate(range)
-  return start ? sql`and bucket >= ${start}` : sql``
+  // Must be an ISO string, never a raw Date: raw sql`` params bypass the
+  // column's mapToDriverValue, and drizzle's postgres-js driver replaces the
+  // Date serializer with an identity fn — a raw Date reaches
+  // Buffer.byteLength() and throws, which the callers' catch blocks would
+  // silently turn into an all-zero dashboard.
+  return start ? sql`and bucket >= ${start.toISOString()}` : sql``
 }
 
 function guildFilter(): SQL {
@@ -210,7 +215,12 @@ export type UserActivityRow = { userId: string; messages: number; voiceSeconds: 
 
 function toDateOrNull(v: string | Date | null | undefined): Date | null {
   if (!v) return null
-  return v instanceof Date ? v : new Date(v)
+  if (v instanceof Date) return v
+  // Raw-SQL timestamps arrive as naive strings ('2026-07-01 12:00:00') and
+  // are UTC wall-times — pin the parse to UTC so a future TZ env var on the
+  // container can't shift them relative to the query-builder path.
+  const s = v.includes('T') ? v : v.replace(' ', 'T')
+  return new Date(/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(s) ? s : s + 'Z')
 }
 
 /** Blended activity score used to rank both channels and users — messages
@@ -234,6 +244,8 @@ async function aggregateChannelActivity(range: StatsRange, opts?: { userId?: str
         from activity_message_stats
         where 1 = 1 ${rangeFilter(range)} ${guildFilter()} ${userClause}
         group by channel_id
+        order by messages desc
+        limit 5000
       `),
       execRows<{ channel_id: string; channel_name: string | null; voice_seconds: number | null }>(sql`
         select channel_id,
@@ -242,6 +254,8 @@ async function aggregateChannelActivity(range: StatsRange, opts?: { userId?: str
         from activity_voice_stats
         where 1 = 1 ${rangeFilter(range)} ${guildFilter()} ${userClause}
         group by channel_id
+        order by voice_seconds desc
+        limit 5000
       `),
     ])
     const byChannel = new Map<string, ChannelActivityRow>()
@@ -283,12 +297,16 @@ async function aggregateUserActivity(range: StatsRange, opts?: { channelId?: str
         from activity_message_stats
         where 1 = 1 ${rangeFilter(range)} ${guildFilter()} ${channelClause}
         group by user_id
+        order by messages desc
+        limit 5000
       `),
       execRows<{ user_id: string; voice_seconds: number | null; last_bucket: string | Date | null }>(sql`
         select user_id, sum(seconds)::int as voice_seconds, max(bucket) as last_bucket
         from activity_voice_stats
         where 1 = 1 ${rangeFilter(range)} ${guildFilter()} ${channelClause}
         group by user_id
+        order by voice_seconds desc
+        limit 5000
       `),
     ])
     const byUser = new Map<string, UserActivityRow>()
@@ -353,11 +371,17 @@ export async function getTopEmojis(
 ): Promise<EmojiRow[]> {
   const userClause = opts?.userId ? sql`and user_id = ${opts.userId}` : sql``
   try {
+    // Group by key+custom only — emoji_name is captured at write time, so a
+    // renamed custom emoji would otherwise split into two half-counted rows.
+    // Latest non-null name wins, same trick as the channel_name pick above.
     const r = await execRows<{ emoji_key: string; emoji_name: string | null; custom: boolean; count: number | null }>(sql`
-      select emoji_key, emoji_name, custom, sum(count)::int as count
+      select emoji_key,
+             (array_agg(emoji_name order by bucket desc) filter (where emoji_name is not null))[1] as emoji_name,
+             custom,
+             sum(count)::int as count
       from activity_emoji_stats
       where kind = ${kind} ${rangeFilter(range)} ${guildFilter()} ${userClause}
-      group by emoji_key, emoji_name, custom
+      group by emoji_key, custom
       order by count desc
       limit ${limit}
     `)
@@ -458,15 +482,19 @@ export async function getMemberTrend(range: StatsRange, limit = 2000): Promise<M
     const conditions = [isNotNull(squishySchema.activityMemberEvents.memberCount)]
     if (env.GUILD_ID) conditions.push(eq(squishySchema.activityMemberEvents.guildId, env.GUILD_ID))
     if (start) conditions.push(gte(squishySchema.activityMemberEvents.at, start))
+    // DESC + LIMIT takes the NEWEST rows (ASC would freeze the chart on the
+    // oldest `limit` events forever once the append-only table outgrows it),
+    // then reverse back to chronological order for plotting.
     const r = await squishyDb
       .select({ at: squishySchema.activityMemberEvents.at, memberCount: squishySchema.activityMemberEvents.memberCount })
       .from(squishySchema.activityMemberEvents)
       .where(and(...conditions))
-      .orderBy(asc(squishySchema.activityMemberEvents.at))
+      .orderBy(desc(squishySchema.activityMemberEvents.at))
       .limit(limit)
     return r
       .filter((x): x is { at: Date; memberCount: number } => x.memberCount !== null)
       .map((x) => ({ t: x.at.getTime(), value: x.memberCount }))
+      .reverse()
   } catch (err) {
     console.warn('[stats/squishy] member trend load failed', err)
     return []

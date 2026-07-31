@@ -66,7 +66,10 @@ export function TrendLine({ points, height = 64, color = 'accent', ariaLabel, cl
   const plotH = Math.max(height - padY * 2, 1)
 
   const x = (i: number) => (n === 1 ? VIEW_W / 2 : (i / (n - 1)) * VIEW_W)
-  const y = (v: number) => padY + (1 - (v - min) / range) * plotH
+  // A perfectly flat series (max === min) centers vertically — mapping it to
+  // (v - min) / range = 0 would pin a stable value to the bottom edge, which
+  // reads as "zero".
+  const y = (v: number) => (max === min ? padY + plotH / 2 : padY + (1 - (v - min) / range) * plotH)
 
   const linePath = sorted.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(2)},${y(p.value).toFixed(2)}`).join(' ')
   const areaPath = `${linePath} L${x(n - 1).toFixed(2)},${height} L${x(0).toFixed(2)},${height} Z`

@@ -264,7 +264,7 @@ export default async function SquishyStatsChannelDetailPage({
           <CardHeader>
             <div>
               <CardTitle>Top members</CardTitle>
-              <CardDescription>Blended message + voice activity in this channel</CardDescription>
+              <CardDescription>Blended activity — messages + voice minutes in this channel</CardDescription>
             </div>
           </CardHeader>
           <CardBody>
@@ -277,8 +277,8 @@ export default async function SquishyStatsChannelDetailPage({
                   const info = displayMap.get(u.userId)
                   return {
                     label: info?.name ?? u.userId,
-                    value: u.messages,
-                    hint: u.voiceSeconds > 0 ? `+ ${formatHours(u.voiceSeconds)} voice` : undefined,
+                    value: Math.round(u.messages + u.voiceSeconds / 60),
+                    hint: `${u.messages.toLocaleString('en-US')} msgs${u.voiceSeconds > 0 ? ` · ${formatHours(u.voiceSeconds)} voice` : ''}`,
                     href: `/squishy/stats/users/${u.userId}`,
                   }
                 })}

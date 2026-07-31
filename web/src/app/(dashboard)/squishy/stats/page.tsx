@@ -90,7 +90,9 @@ function Chip({ href, active, children }: { href: string; active: boolean; child
 }
 
 function EmojiLabel({ row }: { row: EmojiRow }) {
-  if (row.custom) {
+  // Custom keys must be snowflakes before they're allowed into a CDN URL —
+  // anything else falls through to the text branch instead of a broken image.
+  if (row.custom && /^\d+$/.test(row.emojiKey)) {
     return (
       <span className="inline-flex min-w-0 items-center gap-1.5">
         <Image
@@ -290,7 +292,7 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
             <CardHeader>
               <div>
                 <CardTitle>Top channels</CardTitle>
-                <CardDescription>Blended message + voice activity</CardDescription>
+                <CardDescription>Blended activity — messages + voice minutes</CardDescription>
               </div>
             </CardHeader>
             <CardBody>
@@ -301,8 +303,11 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
                   color="accent"
                   items={channels.map((c) => ({
                     label: c.channelName ?? <span className="font-mono text-xs">{c.channelId}</span>,
-                    value: c.messages,
-                    hint: c.voiceSeconds > 0 ? `+ ${formatHours(c.voiceSeconds)} voice` : undefined,
+                    // Bar value = the same blended score the list is ranked
+                    // by — ranking by blend but sizing bars by messages made
+                    // voice channels sort first with zero-width bars.
+                    value: Math.round(c.messages + c.voiceSeconds / 60),
+                    hint: `${c.messages.toLocaleString('en-US')} msgs${c.voiceSeconds > 0 ? ` · ${formatHours(c.voiceSeconds)} voice` : ''}`,
                     href: `/squishy/stats/channels/${c.channelId}`,
                   }))}
                 />
@@ -314,7 +319,7 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
             <CardHeader>
               <div>
                 <CardTitle>Top members</CardTitle>
-                <CardDescription>By message count</CardDescription>
+                <CardDescription>Blended activity — messages + voice minutes</CardDescription>
               </div>
               <Link href="/squishy/stats/users" className="text-xs text-accent hover:underline whitespace-nowrap">
                 Full leaderboard →
@@ -330,8 +335,8 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
                     const info = displayMap.get(u.userId)
                     return {
                       label: info?.name ?? u.userId,
-                      value: u.messages,
-                      hint: u.voiceSeconds > 0 ? `+ ${formatHours(u.voiceSeconds)} voice` : undefined,
+                      value: Math.round(u.messages + u.voiceSeconds / 60),
+                      hint: `${u.messages.toLocaleString('en-US')} msgs${u.voiceSeconds > 0 ? ` · ${formatHours(u.voiceSeconds)} voice` : ''}`,
                       href: `/squishy/stats/users/${u.userId}`,
                     }
                   })}
