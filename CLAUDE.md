@@ -27,6 +27,7 @@ Every write API route calls `writeAudit(...)` with `actor`, `viewing` (impersona
 1. Branch from `main` (or `origin/main`), do the work, push, open PR with `gh pr create --base main`.
 2. CI runs `verify-schemas` + a full Docker build of both images on every PR (no GHCR push on PRs).
 3. Merge to `main` → CI builds + pushes `ghcr.io/jason-tucker/botpanel{,-web}:latest` → watchtower auto-pulls onto the prod clone within ~30s → verify on `https://bots.tucker.host/`.
+4. **Standing merge authorization (Jason, 2026-08-01):** once a Claude-authored PR is CI-green and expected to work, squash-merge it (one commit per PR) without waiting for a per-PR go-ahead — watchtower ships `main` automatically. Cross-repo ordering still applies (bot schema PRs merge before the dependent botpanel PR). Hold for explicit approval only on risky/destructive changes (migrations that drop or rewrite data, auth/permission changes) or when the change is genuinely ambiguous.
 
 **Bot repos follow the same model.** SquishyBot and OtterBot PRs also target `main` directly.
 
