@@ -25,11 +25,12 @@ import {
   normalizeTz,
   getStatsEnabledState,
   getUserStats,
+  AUTO_GROUP_LABEL,
   type StatsRange,
   type StatsTz,
   type EmojiRow,
 } from '@/lib/stats/squishy'
-import { PageHeader, StatCard, Card, CardHeader, CardTitle, CardDescription, CardBody, EmptyState, Heatmap, BarList } from '@/components/ui'
+import { PageHeader, StatCard, Card, CardHeader, CardTitle, CardDescription, CardBody, EmptyState, Heatmap, BarList, Icon } from '@/components/ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -283,12 +284,22 @@ export default async function SquishyStatsUserDetailPage({
                 <BarList
                   color="accent"
                   items={stats.topChannels.map((c) => ({
-                    label: c.channelName ?? <span className="font-mono text-xs">{c.channelId}</span>,
+                    // Ephemeral auto rooms fold into one group row (their
+                    // individual channels are deleted on empty and would
+                    // render as dead IDs here).
+                    label: c.isAutoGroup ? (
+                      <span className="inline-flex min-w-0 items-center gap-1.5 text-accent">
+                        <Icon name="voice" size={14} />
+                        <span className="truncate font-medium">{AUTO_GROUP_LABEL}</span>
+                      </span>
+                    ) : (
+                      c.channelName ?? <span className="font-mono text-xs">{c.channelId}</span>
+                    ),
                     value: Math.round(c.messages + c.voiceSeconds / 60),
-                    hint: `${c.messages.toLocaleString('en-US')} msgs${c.voiceSeconds > 0 ? ` · ${formatHours(c.voiceSeconds)} voice` : ''}`,
+                    hint: `${c.isAutoGroup && c.roomCount ? `${c.roomCount} room${c.roomCount === 1 ? '' : 's'} · ` : ''}${c.messages.toLocaleString('en-US')} msgs${c.voiceSeconds > 0 ? ` · ${formatHours(c.voiceSeconds)} voice` : ''}`,
                     // Channel drill-down is sudo-only — a member's own page
                     // must not be full of links that 403 them.
-                    href: isPriv ? `/squishy/stats/channels/${c.channelId}` : undefined,
+                    href: isPriv ? (c.isAutoGroup ? '/squishy/stats/auto-voice' : `/squishy/stats/channels/${c.channelId}`) : undefined,
                   }))}
                 />
               )}

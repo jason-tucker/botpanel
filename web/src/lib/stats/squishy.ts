@@ -210,8 +210,27 @@ export async function getServerHeatmap(metric: StatsMetric, range: StatsRange, t
 
 // ─── Channel / user activity aggregates (shared by leaderboards + detail pages) ──
 
-export type ChannelActivityRow = { channelId: string; channelName: string | null; messages: number; voiceSeconds: number }
+export type ChannelActivityRow = {
+  channelId: string
+  channelName: string | null
+  messages: number
+  voiceSeconds: number
+  /** True only on the synthetic fold-row that aggregates every auto-channel
+   *  (kind-tagged) stats row. Ephemeral auto voice rooms + their companion
+   *  text channels are deleted on empty, so listing them individually fills
+   *  leaderboards with dead "ghost" channel IDs — they fold into this one
+   *  row instead, linked to /squishy/stats/auto-voice for the breakdown. */
+  isAutoGroup?: boolean
+  /** Distinct auto voice rooms folded into the group row (auto_voice kind). */
+  roomCount?: number
+}
 export type UserActivityRow = { userId: string; messages: number; voiceSeconds: number; lastActive: Date | null }
+
+/** Sentinel channelId for the fold-row. Deliberately NOT a snowflake — the
+ *  per-channel detail page 404s non-snowflakes, and the UI links the group
+ *  row to the dedicated /squishy/stats/auto-voice page instead. */
+export const AUTO_GROUP_CHANNEL_ID = 'auto-voice'
+export const AUTO_GROUP_LABEL = 'Auto voice rooms'
 
 function toDateOrNull(v: string | Date | null | undefined): Date | null {
   if (!v) return null
@@ -237,9 +256,10 @@ async function aggregateChannelActivity(range: StatsRange, opts?: { userId?: str
   const userClause = opts?.userId ? sql`and user_id = ${opts.userId}` : sql``
   try {
     const [msgRows, voiceRows] = await Promise.all([
-      execRows<{ channel_id: string; channel_name: string | null; messages: number | null }>(sql`
+      execRows<{ channel_id: string; channel_name: string | null; channel_kind: string | null; messages: number | null }>(sql`
         select channel_id,
                (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as channel_name,
+               (array_agg(channel_kind order by bucket desc) filter (where channel_kind is not null))[1] as channel_kind,
                sum(message_count)::int as messages
         from activity_message_stats
         where 1 = 1 ${rangeFilter(range)} ${guildFilter()} ${userClause}
@@ -247,9 +267,10 @@ async function aggregateChannelActivity(range: StatsRange, opts?: { userId?: str
         order by messages desc
         limit 5000
       `),
-      execRows<{ channel_id: string; channel_name: string | null; voice_seconds: number | null }>(sql`
+      execRows<{ channel_id: string; channel_name: string | null; channel_kind: string | null; voice_seconds: number | null }>(sql`
         select channel_id,
                (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as channel_name,
+               (array_agg(channel_kind order by bucket desc) filter (where channel_kind is not null))[1] as channel_kind,
                sum(seconds)::int as voice_seconds
         from activity_voice_stats
         where 1 = 1 ${rangeFilter(range)} ${guildFilter()} ${userClause}
@@ -258,8 +279,25 @@ async function aggregateChannelActivity(range: StatsRange, opts?: { userId?: str
         limit 5000
       `),
     ])
+    // Kind-tagged channels (ephemeral auto rooms + companion text chats)
+    // fold into ONE synthetic group row instead of one ghost row per dead
+    // channel ID. Everything else stays an individual channel.
     const byChannel = new Map<string, ChannelActivityRow>()
+    const group: ChannelActivityRow = {
+      channelId: AUTO_GROUP_CHANNEL_ID,
+      channelName: AUTO_GROUP_LABEL,
+      messages: 0,
+      voiceSeconds: 0,
+      isAutoGroup: true,
+      roomCount: 0,
+    }
+    const groupRooms = new Set<string>()
     for (const r of msgRows) {
+      if (r.channel_kind) {
+        group.messages += r.messages ?? 0
+        if (r.channel_kind === 'auto_voice') groupRooms.add(r.channel_id)
+        continue
+      }
       byChannel.set(r.channel_id, {
         channelId: r.channel_id,
         channelName: r.channel_name,
@@ -268,6 +306,11 @@ async function aggregateChannelActivity(range: StatsRange, opts?: { userId?: str
       })
     }
     for (const r of voiceRows) {
+      if (r.channel_kind) {
+        group.voiceSeconds += r.voice_seconds ?? 0
+        groupRooms.add(r.channel_id)
+        continue
+      }
       const existing = byChannel.get(r.channel_id)
       if (existing) {
         existing.voiceSeconds = r.voice_seconds ?? 0
@@ -281,15 +324,27 @@ async function aggregateChannelActivity(range: StatsRange, opts?: { userId?: str
         })
       }
     }
-    return Array.from(byChannel.values())
+    const out = Array.from(byChannel.values())
+    if (group.messages > 0 || group.voiceSeconds > 0) {
+      group.roomCount = groupRooms.size
+      out.push(group)
+    }
+    return out
   } catch (err) {
     console.warn('[stats/squishy] channel activity aggregate failed', err)
     return []
   }
 }
 
-async function aggregateUserActivity(range: StatsRange, opts?: { channelId?: string }): Promise<UserActivityRow[]> {
-  const channelClause = opts?.channelId ? sql`and channel_id = ${opts.channelId}` : sql``
+async function aggregateUserActivity(
+  range: StatsRange,
+  opts?: { channelId?: string; autoChannelsOnly?: boolean },
+): Promise<UserActivityRow[]> {
+  const channelClause = opts?.channelId
+    ? sql`and channel_id = ${opts.channelId}`
+    : opts?.autoChannelsOnly
+      ? sql`and channel_kind is not null`
+      : sql``
   try {
     const [msgRows, voiceRows] = await Promise.all([
       execRows<{ user_id: string; messages: number | null; last_bucket: string | Date | null }>(sql`
@@ -353,6 +408,150 @@ export async function getUserLeaderboard(range: StatsRange, limit = 50): Promise
 /** One channel's top users (per-channel detail page). */
 export async function getChannelTopUsers(channelId: string, range: StatsRange, limit = 10): Promise<UserActivityRow[]> {
   return rankByActivity(await aggregateUserActivity(range, { channelId }), limit)
+}
+
+// ─── Auto voice rooms (the fold-group's drill-down) ─────────────────────
+
+export type AutoVoiceRoomRow = {
+  channelId: string
+  channelName: string | null
+  /** Voice seconds in the room + messages typed in it (text-in-voice for
+   *  auto_voice rows; regular messages for companion auto_text rows). */
+  voiceSeconds: number
+  messages: number
+  userCount: number
+  lastActive: Date | null
+  /** True while the room's auto_channels row still exists (room is live). */
+  live: boolean
+}
+
+export type AutoVoiceRoomsSummary = {
+  rooms: AutoVoiceRoomRow[]
+  chats: AutoVoiceRoomRow[]
+  totals: { voiceSeconds: number; messages: number; roomCount: number; userCount: number }
+}
+
+const EMPTY_AUTO_ROOMS: AutoVoiceRoomsSummary = {
+  rooms: [],
+  chats: [],
+  totals: { voiceSeconds: 0, messages: 0, roomCount: 0, userCount: 0 },
+}
+
+/** Per-room breakdown behind the "Auto voice rooms" group row. Rooms are
+ *  `channel_kind = 'auto_voice'` (voice seconds + text-in-voice messages,
+ *  merged by channel id); chats are `'auto_text'` companion channels.
+ *  Liveness comes from the auto_channels table — a room that still has its
+ *  row is currently open. */
+export async function getAutoVoiceRooms(range: StatsRange): Promise<AutoVoiceRoomsSummary> {
+  try {
+    const [voiceRows, msgRows, liveRows, userCountRows] = await Promise.all([
+      execRows<{ channel_id: string; channel_name: string | null; voice_seconds: number | null; users: number | null; last_bucket: string | Date | null }>(sql`
+        select channel_id,
+               (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as channel_name,
+               sum(seconds)::int as voice_seconds,
+               count(distinct user_id)::int as users,
+               max(bucket) as last_bucket
+        from activity_voice_stats
+        where channel_kind = 'auto_voice' ${rangeFilter(range)} ${guildFilter()}
+        group by channel_id
+        order by voice_seconds desc
+        limit 500
+      `),
+      execRows<{ channel_id: string; channel_kind: string; channel_name: string | null; messages: number | null; users: number | null; last_bucket: string | Date | null }>(sql`
+        select channel_id,
+               (array_agg(channel_kind order by bucket desc) filter (where channel_kind is not null))[1] as channel_kind,
+               (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as channel_name,
+               sum(message_count)::int as messages,
+               count(distinct user_id)::int as users,
+               max(bucket) as last_bucket
+        from activity_message_stats
+        where channel_kind is not null ${rangeFilter(range)} ${guildFilter()}
+        group by channel_id
+        order by messages desc
+        limit 500
+      `),
+      squishyDb
+        .select({
+          voiceChannelId: squishySchema.autoChannels.voiceChannelId,
+          textChannelId: squishySchema.autoChannels.textChannelId,
+        })
+        .from(squishySchema.autoChannels)
+        .catch(() => [] as { voiceChannelId: string; textChannelId: string }[]),
+      execRows<{ cnt: number | null }>(sql`
+        select count(distinct user_id)::int as cnt from (
+          select user_id from activity_voice_stats where channel_kind is not null ${rangeFilter(range)} ${guildFilter()}
+          union
+          select user_id from activity_message_stats where channel_kind is not null ${rangeFilter(range)} ${guildFilter()}
+        ) t
+      `),
+    ])
+
+    const liveIds = new Set<string>()
+    for (const r of liveRows) {
+      liveIds.add(r.voiceChannelId)
+      liveIds.add(r.textChannelId)
+    }
+
+    const rooms = new Map<string, AutoVoiceRoomRow>()
+    for (const r of voiceRows) {
+      rooms.set(r.channel_id, {
+        channelId: r.channel_id,
+        channelName: r.channel_name,
+        voiceSeconds: r.voice_seconds ?? 0,
+        messages: 0,
+        userCount: r.users ?? 0,
+        lastActive: toDateOrNull(r.last_bucket),
+        live: liveIds.has(r.channel_id),
+      })
+    }
+    const chats: AutoVoiceRoomRow[] = []
+    for (const r of msgRows) {
+      const base: AutoVoiceRoomRow = {
+        channelId: r.channel_id,
+        channelName: r.channel_name,
+        voiceSeconds: 0,
+        messages: r.messages ?? 0,
+        userCount: r.users ?? 0,
+        lastActive: toDateOrNull(r.last_bucket),
+        live: liveIds.has(r.channel_id),
+      }
+      if (r.channel_kind === 'auto_voice') {
+        // Text-in-voice — merge into the room row instead of a separate entry.
+        const room = rooms.get(r.channel_id)
+        if (room) {
+          room.messages = base.messages
+          room.userCount = Math.max(room.userCount, base.userCount)
+          if (base.lastActive && (!room.lastActive || base.lastActive > room.lastActive)) room.lastActive = base.lastActive
+        } else {
+          rooms.set(r.channel_id, base)
+        }
+      } else {
+        chats.push(base)
+      }
+    }
+
+    const roomList = Array.from(rooms.values()).sort((a, b) => b.voiceSeconds - a.voiceSeconds)
+    chats.sort((a, b) => b.messages - a.messages)
+    return {
+      rooms: roomList,
+      chats,
+      totals: {
+        voiceSeconds: roomList.reduce((s, r) => s + r.voiceSeconds, 0),
+        messages: roomList.reduce((s, r) => s + r.messages, 0) + chats.reduce((s, c) => s + c.messages, 0),
+        roomCount: roomList.length,
+        userCount: userCountRows[0]?.cnt ?? 0,
+      },
+    }
+  } catch (err) {
+    console.warn('[stats/squishy] auto voice rooms load failed', err)
+    return EMPTY_AUTO_ROOMS
+  }
+}
+
+/** Top members across ALL auto rooms/chats combined — feeds the drill-down
+ *  page's leaderboard. */
+export async function getAutoGroupTopUsers(range: StatsRange, limit = 10): Promise<UserActivityRow[]> {
+  return rankByActivity(await aggregateUserActivity(range, { autoChannelsOnly: true }), limit)
 }
 
 // ─── Emojis ─────────────────────────────────────────────────────────────
@@ -763,6 +962,12 @@ export async function getUserStats(userId: string, range: StatsRange, tz: StatsT
 export type ChannelStats = {
   channelId: string
   channelName: string | null
+  /** 'auto_voice' | 'auto_text' when this channel is/was an ephemeral auto
+   *  channel (latest non-null captured kind); null for normal channels. */
+  channelKind: string | null
+  /** True while an auto_channels row still references this ID — i.e. the
+   *  room/companion is currently open, not a deleted ghost. */
+  liveAutoChannel: boolean
   totals: { messages: number; voiceSeconds: number }
   heatmap: HeatmapCell[]
   topUsers: UserActivityRow[]
@@ -774,30 +979,42 @@ export async function getChannelStats(
   tz: StatsTz,
   metric: StatsMetric = 'messages',
 ): Promise<ChannelStats> {
-  const [msgAgg, voiceAgg, heatmap, topUsers] = await Promise.all([
-    execRows<{ messages: number | null; name: string | null }>(sql`
+  const [msgAgg, voiceAgg, heatmap, topUsers, liveRows] = await Promise.all([
+    execRows<{ messages: number | null; name: string | null; kind: string | null }>(sql`
       select sum(message_count)::int as messages,
-             (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as name
+             (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as name,
+             (array_agg(channel_kind order by bucket desc) filter (where channel_kind is not null))[1] as kind
       from activity_message_stats where channel_id = ${channelId} ${rangeFilter(range)} ${guildFilter()}
     `).catch((err) => {
       console.warn('[stats/squishy] channel message totals failed', err)
-      return [] as { messages: number | null; name: string | null }[]
+      return [] as { messages: number | null; name: string | null; kind: string | null }[]
     }),
-    execRows<{ voice_seconds: number | null; name: string | null }>(sql`
+    execRows<{ voice_seconds: number | null; name: string | null; kind: string | null }>(sql`
       select sum(seconds)::int as voice_seconds,
-             (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as name
+             (array_agg(channel_name order by bucket desc) filter (where channel_name is not null))[1] as name,
+             (array_agg(channel_kind order by bucket desc) filter (where channel_kind is not null))[1] as kind
       from activity_voice_stats where channel_id = ${channelId} ${rangeFilter(range)} ${guildFilter()}
     `).catch((err) => {
       console.warn('[stats/squishy] channel voice totals failed', err)
-      return [] as { voice_seconds: number | null; name: string | null }[]
+      return [] as { voice_seconds: number | null; name: string | null; kind: string | null }[]
     }),
     metric === 'voice' ? queryVoiceHeatmap(range, tz, { channelId }) : queryMessagesHeatmap(range, tz, { channelId }),
     getChannelTopUsers(channelId, range, 10),
+    squishyDb
+      .select({ voiceChannelId: squishySchema.autoChannels.voiceChannelId })
+      .from(squishySchema.autoChannels)
+      .where(
+        sql`${squishySchema.autoChannels.voiceChannelId} = ${channelId} or ${squishySchema.autoChannels.textChannelId} = ${channelId}`,
+      )
+      .limit(1)
+      .catch(() => [] as { voiceChannelId: string }[]),
   ])
 
   return {
     channelId,
     channelName: msgAgg[0]?.name ?? voiceAgg[0]?.name ?? null,
+    channelKind: voiceAgg[0]?.kind ?? msgAgg[0]?.kind ?? null,
+    liveAutoChannel: liveRows.length > 0,
     totals: {
       messages: msgAgg[0]?.messages ?? 0,
       voiceSeconds: voiceAgg[0]?.voice_seconds ?? 0,

@@ -45,6 +45,7 @@ import {
   getMemberTrend,
   getBackfillSummary,
   resolveDisplayNames,
+  AUTO_GROUP_LABEL,
   type StatsRange,
   type StatsTz,
   type StatsMetric,
@@ -302,13 +303,23 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
                 <BarList
                   color="accent"
                   items={channels.map((c) => ({
-                    label: c.channelName ?? <span className="font-mono text-xs">{c.channelId}</span>,
+                    // The fold-row aggregates every ephemeral auto room —
+                    // link it to the room breakdown, not the (404ing)
+                    // per-channel page for its sentinel id.
+                    label: c.isAutoGroup ? (
+                      <span className="inline-flex min-w-0 items-center gap-1.5 text-accent">
+                        <Icon name="voice" size={14} />
+                        <span className="truncate font-medium">{AUTO_GROUP_LABEL}</span>
+                      </span>
+                    ) : (
+                      c.channelName ?? <span className="font-mono text-xs">{c.channelId}</span>
+                    ),
                     // Bar value = the same blended score the list is ranked
                     // by — ranking by blend but sizing bars by messages made
                     // voice channels sort first with zero-width bars.
                     value: Math.round(c.messages + c.voiceSeconds / 60),
-                    hint: `${c.messages.toLocaleString('en-US')} msgs${c.voiceSeconds > 0 ? ` · ${formatHours(c.voiceSeconds)} voice` : ''}`,
-                    href: `/squishy/stats/channels/${c.channelId}`,
+                    hint: `${c.isAutoGroup && c.roomCount ? `${c.roomCount} room${c.roomCount === 1 ? '' : 's'} · ` : ''}${c.messages.toLocaleString('en-US')} msgs${c.voiceSeconds > 0 ? ` · ${formatHours(c.voiceSeconds)} voice` : ''}`,
+                    href: c.isAutoGroup ? '/squishy/stats/auto-voice' : `/squishy/stats/channels/${c.channelId}`,
                   }))}
                 />
               )}

@@ -30,7 +30,7 @@ import {
   type StatsTz,
   type StatsMetric,
 } from '@/lib/stats/squishy'
-import { PageHeader, StatCard, Card, CardHeader, CardTitle, CardDescription, CardBody, EmptyState, Heatmap, BarList, Icon } from '@/components/ui'
+import { PageHeader, StatCard, Card, CardHeader, CardTitle, CardDescription, CardBody, EmptyState, Heatmap, BarList, Icon, Badge } from '@/components/ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -145,9 +145,22 @@ export default async function SquishyStatsChannelDetailPage({
           eyebrow="Squishy · Activity"
           title={stats.channelName ?? channelId}
           description={
-            <span className="inline-flex items-center gap-2">
+            <span className="inline-flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs">{channelId}</span>
-              {channelUrl && (
+              {stats.channelKind && (
+                // Ephemeral auto channel — say what it is/was instead of
+                // leaving a dead Discord link as the only context.
+                <Badge tone={stats.liveAutoChannel ? 'success' : 'neutral'} dot={stats.liveAutoChannel}>
+                  {stats.channelKind === 'auto_text' ? 'room text chat' : 'auto voice room'}
+                  {stats.liveAutoChannel ? ' · open' : ' · deleted'}
+                </Badge>
+              )}
+              {stats.channelKind && (
+                <Link href="/squishy/stats/auto-voice" className="text-accent hover:underline">
+                  All rooms →
+                </Link>
+              )}
+              {channelUrl && (!stats.channelKind || stats.liveAutoChannel) && (
                 <a href={channelUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
                   Open in Discord <Icon name="external" size={12} />
                 </a>
