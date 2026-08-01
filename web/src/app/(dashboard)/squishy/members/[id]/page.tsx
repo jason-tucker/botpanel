@@ -55,6 +55,7 @@ import { SudoToggleCard } from './SudoToggleCard'
 import { VoicePresenceCard, type VoiceChannelRow } from './VoicePresenceCard'
 import { MemberColorRoleCard, type ColorRoleOption } from './MemberColorRoleCard'
 import { relTime } from '@/lib/util/format'
+import { MemberJump } from '@/components/MemberJump'
 
 export const dynamic = 'force-dynamic'
 
@@ -594,6 +595,7 @@ export default async function MemberDrillPage({
           >
             ← Back to Members
           </Link>
+          <MemberJump hrefTemplate="/squishy/members/{id}" placeholder="Switch member…" />
         </div>
 
         <header className="rounded-2xl border border-line bg-bg-card p-6 flex flex-col gap-3">

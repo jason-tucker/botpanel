@@ -10,6 +10,7 @@
  */
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { getViewAsUserId } from '@/lib/auth/viewAs'
@@ -18,8 +19,8 @@ import { env } from '@/lib/env'
 import {
   STATS_RANGES,
   STATS_RANGE_LABELS,
-  STATS_TZ_ALLOWLIST,
-  STATS_TZ_LABELS,
+  tzChips,
+  tzLabel,
   normalizeRange,
   normalizeTz,
   normalizeMetric,
@@ -103,7 +104,7 @@ export default async function SquishyStatsChannelDetailPage({
 
   const sp = await searchParams
   const range: StatsRange = normalizeRange(sp.range)
-  const tz: StatsTz = normalizeTz(sp.tz)
+  const tz: StatsTz = normalizeTz(sp.tz, (await cookies()).get('stats_tz')?.value)
   const metric: StatsMetric = normalizeMetric(sp.metric)
   const base = { range, tz, metric }
 
@@ -185,7 +186,7 @@ export default async function SquishyStatsChannelDetailPage({
                 ))}
               </div>
               <div className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg-card2 p-1">
-                {STATS_TZ_ALLOWLIST.map((t) => (
+                {tzChips(tz).map((t) => (
                   <Link
                     key={t}
                     href={`/squishy/stats/channels/${channelId}${qs(base, { tz: t })}`}
@@ -195,7 +196,7 @@ export default async function SquishyStatsChannelDetailPage({
                         : 'rounded-md px-2.5 py-1 text-xs text-ink-dim transition-colors hover:bg-bg-hover hover:text-ink'
                     }
                   >
-                    {STATS_TZ_LABELS[t]}
+                    {tzLabel(t)}
                   </Link>
                 ))}
               </div>
@@ -233,7 +234,7 @@ export default async function SquishyStatsChannelDetailPage({
             <div>
               <CardTitle>Activity heatmap</CardTitle>
               <CardDescription>
-                {metric === 'voice' ? 'Voice minutes' : 'Messages'} by day of week &amp; hour, {STATS_TZ_LABELS[tz]} time.
+                {metric === 'voice' ? 'Voice minutes' : 'Messages'} by day of week &amp; hour, {tzLabel(tz)} time.
               </CardDescription>
             </div>
             <div className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg-card2 p-1">

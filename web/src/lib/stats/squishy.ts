@@ -16,10 +16,9 @@
  * The trailing `::text` cast on the tz parameter is required — without it
  * Postgres can't disambiguate the `timezone(text, timestamp)` overload from
  * `timezone(text, timestamptz)` when the value arrives as a bound parameter
- * instead of a literal. `tz` is always validated against `STATS_TZ_ALLOWLIST`
- * before it reaches SQL (belt-and-suspenders — `normalizeTz` guarantees a
- * bad querystring value can never reach here, but every query re-validates
- * via the `StatsTz` type at the call boundary).
+ * instead of a literal. `tz` is always validated against the runtime's own
+ * IANA zone list (`isValidTz`, via `normalizeTz`) before it reaches SQL —
+ * arbitrary strings can never reach `AT TIME ZONE`.
  *
  * All dynamic values are passed through Drizzle's `sql` tag (parameterized —
  * never string-concatenated). The only non-parameterized text is a small,
@@ -52,9 +51,10 @@ export const STATS_RANGE_LABELS: Record<StatsRange, string> = {
   all: 'All time',
 }
 
-// Allowlist per contract — do not widen without also widening the tz cast
-// comment above; an unvalidated tz string reaching `AT TIME ZONE` is a
-// (low-severity, read-only) injection surface via Postgres zone-name lookup.
+// Quick-pick chips shown on every stats page. Any OTHER valid IANA zone is
+// also accepted (see `isValidTz`) — the viewer's browser zone arrives via
+// the `stats_tz` cookie (set client-side by <TzDetect>) so stats default to
+// the viewer's local time instead of UTC.
 export const STATS_TZ_ALLOWLIST = [
   'UTC',
   'America/New_York',
@@ -64,10 +64,10 @@ export const STATS_TZ_ALLOWLIST = [
   'Europe/London',
   'Europe/Berlin',
 ] as const
-export type StatsTz = (typeof STATS_TZ_ALLOWLIST)[number]
+export type StatsTz = string
 export const DEFAULT_TZ: StatsTz = 'UTC'
 
-export const STATS_TZ_LABELS: Record<StatsTz, string> = {
+const STATS_TZ_LABELS: Record<string, string> = {
   UTC: 'UTC',
   'America/New_York': 'Eastern',
   'America/Chicago': 'Central',
@@ -75,6 +75,36 @@ export const STATS_TZ_LABELS: Record<StatsTz, string> = {
   'America/Los_Angeles': 'Pacific',
   'Europe/London': 'London',
   'Europe/Berlin': 'Berlin',
+}
+
+/** Human label for a zone — friendly name for the quick-pick chips, city
+ *  segment ("America/Detroit" → "Detroit") for everything else. */
+export function tzLabel(tz: StatsTz): string {
+  return STATS_TZ_LABELS[tz] ?? (tz.split('/').pop() ?? tz).replaceAll('_', ' ')
+}
+
+/** Chip list for the tz switcher: the quick picks, plus the active zone
+ *  appended when it isn't one of them (so a viewer's auto-detected local
+ *  zone always has a visible, selected chip). */
+export function tzChips(active: StatsTz): StatsTz[] {
+  const base: StatsTz[] = [...STATS_TZ_ALLOWLIST]
+  return base.includes(active) ? base : [...base, active]
+}
+
+// Injection safety: a tz value only ever reaches `AT TIME ZONE` after
+// membership in the runtime's own IANA zone list — arbitrary strings never
+// reach SQL. Computed once per process.
+let validTzSet: Set<string> | null = null
+function isValidTz(v: string): boolean {
+  if (validTzSet === null) {
+    try {
+      validTzSet = new Set(Intl.supportedValuesOf('timeZone'))
+      validTzSet.add('UTC') // supportedValuesOf omits plain UTC on some ICU builds
+    } catch {
+      validTzSet = new Set(STATS_TZ_ALLOWLIST)
+    }
+  }
+  return validTzSet.has(v)
 }
 
 export type StatsMetric = 'messages' | 'voice'
@@ -89,9 +119,17 @@ export function normalizeRange(v: string | string[] | undefined | null): StatsRa
   return (STATS_RANGES as readonly string[]).includes(s ?? '') ? (s as StatsRange) : DEFAULT_RANGE
 }
 
-export function normalizeTz(v: string | string[] | undefined | null): StatsTz {
+/** Explicit `?tz=` wins; otherwise the viewer's `stats_tz` cookie (their
+ *  auto-detected local zone); otherwise UTC. Every candidate is validated
+ *  against the runtime IANA zone list before it can reach SQL. */
+export function normalizeTz(
+  v: string | string[] | undefined | null,
+  cookieTz?: string | null,
+): StatsTz {
   const s = firstParam(v)
-  return (STATS_TZ_ALLOWLIST as readonly string[]).includes(s ?? '') ? (s as StatsTz) : DEFAULT_TZ
+  if (s && isValidTz(s)) return s
+  if (cookieTz && isValidTz(cookieTz)) return cookieTz
+  return DEFAULT_TZ
 }
 
 export function normalizeMetric(v: string | string[] | undefined | null): StatsMetric {

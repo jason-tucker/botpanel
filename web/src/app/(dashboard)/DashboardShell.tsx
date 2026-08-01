@@ -83,6 +83,7 @@ export function DashboardShell({
       displayUser={displayUser}
       viewAs={viewAs}
       botOwner={access.botOwner}
+      canSearchMembers={access.squishy.sudo || access.botOwner}
       health={getShellHealth()}
     >
       {children}

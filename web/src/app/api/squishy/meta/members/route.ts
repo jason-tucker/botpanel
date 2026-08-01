@@ -1,11 +1,13 @@
 /**
  * GET /api/squishy/meta/members — proxy to the bot's `meta.list_members` RPC.
  *
- * Powers the `<MemberPicker>` typeahead combobox. No server-side cache —
- * the picker fires on every keystroke (debounced 200ms client-side) and a
- * staleness window would mean a brand-new join doesn't autocomplete. The
- * bot side is a cache read with no Discord API hop, so unbounded query
- * fanout is fine — the bot's in-memory member iteration is sub-ms.
+ * Powers the `<MemberPicker>` typeahead and the command palette's member
+ * search. A tiny per-(q,limit) in-process cache (10s TTL) absorbs the
+ * keystroke back-and-forth of a typeahead ("jas" → "jaso" → backspace)
+ * without a Redis round-trip each time; 10s is short enough that a
+ * brand-new join still autocompletes almost immediately. The RPC wait is
+ * capped at 2s — typeahead results that arrive later than that are worse
+ * than an error hint.
  *
  * Query:
  *   `?q=<text>`   — case-insensitive `includes` over username + displayName.
@@ -29,6 +31,10 @@ type MemberRow = {
   avatarUrl: string
 }
 
+const CACHE_TTL_MS = 10_000
+const CACHE_MAX_KEYS = 500
+const searchCache = new Map<string, { members: MemberRow[]; expiresAt: number }>()
+
 export const GET = withAuth(
   async (req: NextRequest) => {
     const q = (req.nextUrl.searchParams.get('q') ?? '').slice(0, 100)
@@ -39,15 +45,24 @@ export const GET = withAuth(
       if (Number.isFinite(n)) limit = Math.max(1, Math.min(100, Math.floor(n)))
     }
 
+    const key = `${limit}|${q.toLowerCase()}`
+    const cached = searchCache.get(key)
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json({ members: cached.members })
+    }
+
     const reply = await callBot<{ members: MemberRow[] }>(
       'squishy',
       'meta.list_members',
       { query: q, limit },
+      { timeoutMs: 2000 },
     )
     if (!reply.ok) {
       return NextResponse.json({ members: [], error: reply.error })
     }
     const members = Array.isArray(reply.data?.members) ? reply.data.members : []
+    if (searchCache.size >= CACHE_MAX_KEYS) searchCache.clear()
+    searchCache.set(key, { members, expiresAt: Date.now() + CACHE_TTL_MS })
     return NextResponse.json({ members })
   },
   { require: 'any' },
