@@ -23,6 +23,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { getViewAsUserId } from '@/lib/auth/viewAs'
@@ -30,8 +31,8 @@ import { relTime } from '@/lib/util/format'
 import {
   STATS_RANGES,
   STATS_RANGE_LABELS,
-  STATS_TZ_ALLOWLIST,
-  STATS_TZ_LABELS,
+  tzChips,
+  tzLabel,
   normalizeRange,
   normalizeTz,
   normalizeMetric,
@@ -129,7 +130,7 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
 
   const sp = await searchParams
   const range: StatsRange = normalizeRange(sp.range)
-  const tz: StatsTz = normalizeTz(sp.tz)
+  const tz: StatsTz = normalizeTz(sp.tz, (await cookies()).get('stats_tz')?.value)
   const metric: StatsMetric = normalizeMetric(sp.metric)
   const base = { range, tz, metric }
 
@@ -233,9 +234,9 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
                 ))}
               </ChipGroup>
               <ChipGroup>
-                {STATS_TZ_ALLOWLIST.map((t) => (
+                {tzChips(tz).map((t) => (
                   <Chip key={t} href={`/squishy/stats${qs(base, { tz: t })}`} active={t === tz}>
-                    {STATS_TZ_LABELS[t]}
+                    {tzLabel(t)}
                   </Chip>
                 ))}
               </ChipGroup>
@@ -262,7 +263,7 @@ export default async function SquishyStatsPage({ searchParams }: { searchParams:
             <div>
               <CardTitle>Activity heatmap</CardTitle>
               <CardDescription>
-                {metric === 'voice' ? 'Voice minutes' : 'Messages'} by day of week &amp; hour, {STATS_TZ_LABELS[tz]} time.
+                {metric === 'voice' ? 'Voice minutes' : 'Messages'} by day of week &amp; hour, {tzLabel(tz)} time.
               </CardDescription>
             </div>
             <ChipGroup>

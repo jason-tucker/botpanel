@@ -11,6 +11,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { getSession } from '@/lib/auth/session'
 import { resolveAccess } from '@/lib/auth/perms'
 import { getViewAsUserId } from '@/lib/auth/viewAs'
@@ -19,8 +20,8 @@ import { relTime } from '@/lib/util/format'
 import {
   STATS_RANGES,
   STATS_RANGE_LABELS,
-  STATS_TZ_ALLOWLIST,
-  STATS_TZ_LABELS,
+  tzChips,
+  tzLabel,
   normalizeRange,
   normalizeTz,
   getStatsEnabledState,
@@ -31,6 +32,7 @@ import {
   type EmojiRow,
 } from '@/lib/stats/squishy'
 import { PageHeader, StatCard, Card, CardHeader, CardTitle, CardDescription, CardBody, EmptyState, Heatmap, BarList, Icon } from '@/components/ui'
+import { MemberJump } from '@/components/MemberJump'
 
 export const dynamic = 'force-dynamic'
 
@@ -133,7 +135,7 @@ export default async function SquishyStatsUserDetailPage({
 
   const sp = await searchParams
   const range: StatsRange = normalizeRange(sp.range)
-  const tz: StatsTz = normalizeTz(sp.tz)
+  const tz: StatsTz = normalizeTz(sp.tz, (await cookies()).get('stats_tz')?.value)
   const base = { range, tz }
 
   const state = await getStatsEnabledState()
@@ -186,6 +188,7 @@ export default async function SquishyStatsUserDetailPage({
           }
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              {isPriv && <MemberJump hrefTemplate="/squishy/stats/users/{id}" placeholder="Switch member…" />}
               <div className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg-card2 p-1">
                 {STATS_RANGES.map((r) => (
                   <Link
@@ -202,7 +205,7 @@ export default async function SquishyStatsUserDetailPage({
                 ))}
               </div>
               <div className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg-card2 p-1">
-                {STATS_TZ_ALLOWLIST.map((t) => (
+                {tzChips(tz).map((t) => (
                   <Link
                     key={t}
                     href={`/squishy/stats/users/${userId}${qs(base, { tz: t })}`}
@@ -212,7 +215,7 @@ export default async function SquishyStatsUserDetailPage({
                         : 'rounded-md px-2.5 py-1 text-xs text-ink-dim transition-colors hover:bg-bg-hover hover:text-ink'
                     }
                   >
-                    {STATS_TZ_LABELS[t]}
+                    {tzLabel(t)}
                   </Link>
                 ))}
               </div>
@@ -241,7 +244,7 @@ export default async function SquishyStatsUserDetailPage({
             <CardHeader>
               <div>
                 <CardTitle>Text activity</CardTitle>
-                <CardDescription>Messages by day of week &amp; hour, {STATS_TZ_LABELS[tz]}</CardDescription>
+                <CardDescription>Messages by day of week &amp; hour, {tzLabel(tz)}</CardDescription>
               </div>
             </CardHeader>
             <CardBody>
@@ -256,7 +259,7 @@ export default async function SquishyStatsUserDetailPage({
             <CardHeader>
               <div>
                 <CardTitle>Voice activity</CardTitle>
-                <CardDescription>Minutes by day of week &amp; hour, {STATS_TZ_LABELS[tz]}</CardDescription>
+                <CardDescription>Minutes by day of week &amp; hour, {tzLabel(tz)}</CardDescription>
               </div>
             </CardHeader>
             <CardBody>

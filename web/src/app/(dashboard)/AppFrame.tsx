@@ -1,37 +1,39 @@
 'use client'
 /**
- * AppFrame — the interactive Discord-style shell.
+ * AppFrame — the interactive shell around every dashboard page.
  *
- * Layout (left → right): icon rail → contextual section sidebar → (topbar +
- * scrollable content). The server `DashboardShell` resolves everything and
- * hands this client component a fully-serializable prop bag; AppFrame owns the
- * stateful bits that must live on the client:
+ * Layout (left → right): unified sidebar → (topbar + scrollable content).
+ * The old two-column Discord-style chrome (icon rail + per-section swapping
+ * sidebar) is gone — one sidebar lists everything the viewer can reach, so
+ * no page is ever more than a click away. The server `DashboardShell`
+ * resolves everything and hands this client component a fully-serializable
+ * prop bag; AppFrame owns the stateful bits that must live on the client:
  *
- *   - mobile section-drawer open/close
- *   - ⌘K / Ctrl-K command palette
+ *   - mobile sidebar drawer open/close
+ *   - ⌘K / Ctrl-K command palette (pages + actions + member search)
  *   - global toast host
  *
- * Server-rendered page content arrives via `{children}` and is rendered inside
- * the scroll container untouched — every existing page keeps working, just
- * inside nicer chrome.
+ * Server-rendered page content arrives via `{children}` and is rendered
+ * inside the scroll container untouched.
  */
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import type { NavModel } from './nav'
 import { sectionForPath } from './nav'
 import type { ShellHealth, ShellDisplayUser, ShellViewAs } from './shellTypes'
-import { LeftRail } from './LeftRail'
-import { SectionSidebar } from './SectionSidebar'
+import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { CommandPalette } from './CommandPalette'
 import { ToastHost } from './ToastHost'
 import { ViewAsBanner } from './ViewAsBanner'
+import { TzDetect } from './TzDetect'
 
 export function AppFrame({
   nav,
   displayUser,
   viewAs,
   botOwner,
+  canSearchMembers,
   health,
   children,
 }: {
@@ -39,6 +41,7 @@ export function AppFrame({
   displayUser: ShellDisplayUser
   viewAs: ShellViewAs
   botOwner: boolean
+  canSearchMembers: boolean
   health: ShellHealth
   children: React.ReactNode
 }) {
@@ -64,8 +67,7 @@ export function AppFrame({
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const activeSection =
-    nav.sections.find((s) => s.id === activeSectionId) ?? nav.sections[0]
+  const activeSection = nav.sections.find((s) => s.id === activeSectionId) ?? nav.sections[0]
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-bg-app text-ink">
@@ -74,15 +76,13 @@ export function AppFrame({
       )}
 
       <div className="flex min-h-0 flex-1">
-        <LeftRail
-          sections={nav.sections}
-          activeSectionId={activeSectionId}
+        {/* Desktop sidebar */}
+        <Sidebar
+          nav={nav}
           displayUser={displayUser}
           onOpenPalette={() => setPaletteOpen(true)}
+          className="hidden md:flex"
         />
-
-        {/* Desktop contextual sidebar */}
-        <SectionSidebar section={activeSection} className="hidden md:flex" />
 
         {/* Mobile drawer */}
         <div
@@ -93,11 +93,19 @@ export function AppFrame({
           }`}
         />
         <div
-          className={`md:hidden fixed inset-y-0 left-[60px] z-50 transition-transform duration-200 ${
-            drawerOpen ? 'translate-x-0' : '-translate-x-[120%]'
+          className={`md:hidden fixed inset-y-0 left-0 z-50 transition-transform duration-200 ${
+            drawerOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <SectionSidebar section={activeSection} onClose={() => setDrawerOpen(false)} />
+          <Sidebar
+            nav={nav}
+            displayUser={displayUser}
+            onOpenPalette={() => {
+              setDrawerOpen(false)
+              setPaletteOpen(true)
+            }}
+            onClose={() => setDrawerOpen(false)}
+          />
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -119,8 +127,10 @@ export function AppFrame({
         onClose={() => setPaletteOpen(false)}
         sections={nav.sections}
         viewAsActive={Boolean(viewAs)}
+        canSearchMembers={canSearchMembers}
       />
       <ToastHost />
+      <TzDetect />
     </div>
   )
 }
