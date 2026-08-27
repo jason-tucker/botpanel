@@ -108,7 +108,8 @@ are stale.)
 - **Squishy sudo** = `SUDO_USER_IDS` env (comma-separated Discord IDs) + `sudo_users` DB table. `SUDO_ROLE_IDS` (role-based check) is a `TODO(V2)` in `src/lib/auth/perms.ts` — needs a Discord member fetch and is not yet live.
 - **Voice owner/host/acting-owner** = `auto_channels` row check.
 - **Otter business owner/manager/employee** = `business_owners` + `business_role_mappings` rank.
-- **OC stock editor** / **Caked manager** / **MKE staff** = derived from business role mappings.
+- **OC stock viewer / editor** = configurable, NOT hard-coded. `src/lib/otter/ocStockAccess.ts` reads `businesses.settings.ocStockAccess` on the `original-clothing` row (a panel-owned key inside a bot-owned JSONB column) and resolves a `{canView, canEdit, canConfigure, grantedByRole}` capability set from a minimum OC rank plus a Discord-role allowlist. Defaults: see = anyone signed in, edit = manager+. Bot owner and OC business owners always pass, and only they can change the rules. Editable from the Access card on `/otter/oc-stock`; enforced on the page, in the sidebar, and on every `/api/otter/oc-stock/**` route. The role allowlist needs `access.otter.roleIds`, which comes from otterbot's `business.user_ranks` reply.
+- **Caked manager** / **MKE staff** = derived from business role mappings.
 - **Member** = any logged-in Discord user; self-service only.
 
 **View-As**: sudo/owner can act as someone else. Audit rows record BOTH `actor` (real) and `viewing` (impersonated). Plumb this through every audit hook from day one.

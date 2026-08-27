@@ -20,6 +20,7 @@ import { resolveAccess } from '@/lib/auth/perms'
 import { getViewAsUserId } from '@/lib/auth/viewAs'
 import { resolveOneUsername } from '@/lib/userDisplay'
 import { env } from '@/lib/env'
+import { resolveOcStockAccess } from '@/lib/otter/ocStockAccess'
 import { DashboardShell } from './DashboardShell'
 
 export const dynamic = 'force-dynamic'
@@ -61,8 +62,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // the otter-business-rank proxy instead (see Sidebar.tsx).
   const squishyGuildId = env.GUILD_ID ?? null
 
+  // OC Stock's audience is operator-configurable, so its nav link can't be
+  // decided from the AccessMap alone. The rule set is memoized for 30s in
+  // `ocStockAccess`, so this costs at most one small query per half-minute
+  // per process — and it degrades to the permissive default if Postgres is
+  // down, which is the same answer the page itself would give.
+  const ocStock = await resolveOcStockAccess(accessWithViewing)
+  const navFlags = {
+    ocStockVisible: ocStock.canView,
+    ocStockRoleGrant: ocStock.grantedByRole,
+  }
+
   return (
-    <DashboardShell access={accessWithViewing} session={session} squishyGuildId={squishyGuildId}>
+    <DashboardShell
+      access={accessWithViewing}
+      session={session}
+      squishyGuildId={squishyGuildId}
+      navFlags={navFlags}
+    >
       {children}
     </DashboardShell>
   )

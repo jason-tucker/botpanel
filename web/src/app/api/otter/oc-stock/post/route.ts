@@ -11,11 +11,14 @@
  *
  * Gating: `withAuth({require:'any', csrf:true, rateLimit:{points:10,
  * perSeconds:60}})`. The middleware-level `'any'` (logged-in) gate is
- * widened by a route-local capability check — anyone with **any** OC
- * business mapping (employee / manager / owner) or the bot owner is
- * allowed to post. Posting is a low-risk, eventually-visible action and
- * we want every OC staffer to be able to do it without granting the full
- * editor capability.
+ * narrowed by a route-local capability check: you must be able to SEE the
+ * board under the configurable OC-stock rules (see
+ * `@/lib/otter/ocStockAccess`) and then either hold any OC business
+ * mapping (employee / manager / owner) or pass the edit rule. Posting is a
+ * low-risk, eventually-visible action and we want every OC staffer to be
+ * able to do it without granting the full editor capability — but pushing
+ * a card someone isn't allowed to look at makes no sense, so `canView` is
+ * a hard prerequisite. Bot owner always wins.
  *
  * Body shape: `{ channelId: string }` — snowflake-validated.
  *
@@ -31,6 +34,7 @@ import { z } from 'zod'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { callBot } from '@/lib/botrpc'
+import { OC_SLUG, resolveOcStockAccess } from '@/lib/otter/ocStockAccess'
 import type { AccessMap } from '@/lib/auth/perms'
 
 export const runtime = 'nodejs'
@@ -45,11 +49,14 @@ const bodySchema = z.object({
     .regex(SNOWFLAKE_RE, 'channelId must be a Discord snowflake (17-20 digits)'),
 })
 
-function canPostOcStock(access: AccessMap): boolean {
+async function canPostOcStock(access: AccessMap): Promise<boolean> {
   // Any OC business mapping (employee / manager / owner) is enough — posting
   // the public stock card is lighter than editing it. Bot owner always wins.
   if (access.botOwner) return true
-  const rank = access.otter.businesses['original-clothing']
+  const caps = await resolveOcStockAccess(access)
+  if (!caps.canView) return false
+  if (caps.canEdit) return true
+  const rank = access.otter.businesses[OC_SLUG]
   return rank === 'owner' || rank === 'manager' || rank === 'employee'
 }
 
@@ -57,7 +64,7 @@ type StockPostReply = { messageId: string; channelId: string }
 
 export const POST = withAuth(
   async (req: NextRequest, access) => {
-    if (!canPostOcStock(access)) {
+    if (!(await canPostOcStock(access))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 

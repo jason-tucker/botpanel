@@ -43,6 +43,15 @@ export type AccessMap = {
   }
   otter: {
     businesses: Record<string, BusinessRank>
+    /**
+     * Raw Discord role ids the viewer holds in the Otter guild(s),
+     * @everyone excluded. Supplied by the bot's `business.user_ranks`
+     * verb. Needed for access rules that name roles directly rather than
+     * ranks (e.g. the configurable OC-stock view/edit allowlists in
+     * `src/lib/otter/ocStockAccess.ts`). Empty when the bot is
+     * unreachable — role-based grants then simply don't apply.
+     */
+    roleIds: string[]
   }
 }
 
@@ -111,7 +120,9 @@ async function loadVoiceChannels(userId: string): Promise<string[]> {
 // Module-level cache so resolveAccess() across many requests doesn't
 // hammer the bot. Keyed by userId. 60s TTL — fresh enough that a sudo
 // granting someone a role sees the effect within a minute on the panel.
-const otterRanksCache = new Map<string, { ranks: Record<string, BusinessRank>; expiresAt: number }>()
+type OtterAccess = { ranks: Record<string, BusinessRank>; roleIds: string[] }
+
+const otterRanksCache = new Map<string, { value: OtterAccess; expiresAt: number }>()
 const OTTER_RANKS_TTL_MS = 60_000
 // Expired entries used to linger forever (reads delete-on-miss only for
 // the key being read), so the map grew one stale entry per distinct
@@ -126,10 +137,12 @@ function sweepOtterRanksCache(now: number): void {
   }
 }
 
-async function loadOtterBusinesses(userId: string): Promise<Record<string, BusinessRank>> {
+const EMPTY_OTTER_ACCESS: OtterAccess = { ranks: {}, roleIds: [] }
+
+async function loadOtterBusinesses(userId: string): Promise<OtterAccess> {
   const now = Date.now()
   const cached = otterRanksCache.get(userId)
-  if (cached && cached.expiresAt > now) return cached.ranks
+  if (cached && cached.expiresAt > now) return cached.value
 
   // The previous implementation tried to derive otter ranks from direct
   // SQL — `where m.user_id = $1` on `business_role_mappings`. That column
@@ -140,7 +153,7 @@ async function loadOtterBusinesses(userId: string): Promise<Record<string, Busin
   // in `business_owners` to return the right rank per business slug.
   try {
     const { callBot } = await import('../botrpc')
-    const reply = await callBot<{ ranks: Record<string, string> }>(
+    const reply = await callBot<{ ranks: Record<string, string>; roleIds?: string[] }>(
       'otter',
       'business.user_ranks',
       { userId },
@@ -152,20 +165,27 @@ async function loadOtterBusinesses(userId: string): Promise<Record<string, Busin
       // load. Don't cache the empty result so we retry instead of
       // wedging the user out for 60s.
       console.warn('[perms] business.user_ranks failed; returning {}', reply.error)
-      return {}
+      return EMPTY_OTTER_ACCESS
     }
-    const out: Record<string, BusinessRank> = {}
+    const ranks: Record<string, BusinessRank> = {}
     for (const [slug, rank] of Object.entries(reply.data.ranks ?? {})) {
       if (rank === 'owner' || rank === 'manager' || rank === 'employee') {
-        out[slug] = rank
+        ranks[slug] = rank
       }
     }
+    // `roleIds` is optional on the wire: an older bot build (pre-role-grant)
+    // replies without it. Treat a missing field as "no role grants" rather
+    // than failing the whole resolve.
+    const roleIds = Array.isArray(reply.data.roleIds)
+      ? reply.data.roleIds.filter((r): r is string => typeof r === 'string')
+      : []
+    const value: OtterAccess = { ranks, roleIds }
     sweepOtterRanksCache(now)
-    otterRanksCache.set(userId, { ranks: out, expiresAt: now + OTTER_RANKS_TTL_MS })
-    return out
+    otterRanksCache.set(userId, { value, expiresAt: now + OTTER_RANKS_TTL_MS })
+    return value
   } catch (err) {
     console.warn('[perms] otter businesses lookup failed; returning {}', err)
-    return {}
+    return EMPTY_OTTER_ACCESS
   }
 }
 
@@ -193,7 +213,7 @@ async function resolveCapsUncached(userId: string): Promise<ResolvedCaps> {
   // roles; deferred until we have the bot RPC for guild member lookup.
   const envSudo = ENV_SUDO_IDS.has(userId)
 
-  const [dbSudo, voiceChannels, businesses] = await Promise.all([
+  const [dbSudo, voiceChannels, otter] = await Promise.all([
     envSudo ? Promise.resolve(true) : checkSudoDb(userId),
     loadVoiceChannels(userId),
     loadOtterBusinesses(userId),
@@ -206,7 +226,7 @@ async function resolveCapsUncached(userId: string): Promise<ResolvedCaps> {
       voiceChannels,
       canSelfEdit: true,
     },
-    otter: { businesses },
+    otter: { businesses: otter.ranks, roleIds: otter.roleIds },
   }
 }
 

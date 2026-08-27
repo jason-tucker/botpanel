@@ -13,7 +13,7 @@
  */
 import type { AccessMap } from '@/lib/auth/perms'
 import { getShellHealth } from '@/lib/heartbeats'
-import { buildNav } from './nav'
+import { buildNav, type NavFlags } from './nav'
 import type { ShellDisplayUser, ShellViewAs } from './shellTypes'
 import { AppFrame } from './AppFrame'
 
@@ -33,11 +33,14 @@ export function DashboardShell({
   access,
   session,
   squishyGuildId,
+  navFlags,
   children,
 }: {
   access: AccessMap
   session: SessionLike
   squishyGuildId: string | null
+  /** DB-backed nav gates the layout resolved for us — see `NavFlags`. */
+  navFlags?: NavFlags
   children: React.ReactNode
 }) {
   const viewAsActive = access.actor.id !== access.viewing.id
@@ -51,6 +54,7 @@ export function DashboardShell({
       guildIds: session.guildIds,
     },
     squishyGuildId,
+    navFlags,
   )
 
   // Under View-As the layout has already swapped `access.viewing` to the

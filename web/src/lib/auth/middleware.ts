@@ -110,7 +110,7 @@ function sessionOnlyAccess(session: Session): AccessMap {
     viewing: identity,
     botOwner: session.id === env.BOT_OWNER_ID,
     squishy: { sudo: false, voiceChannels: [], canSelfEdit: true },
-    otter: { businesses: {} },
+    otter: { businesses: {}, roleIds: [] },
   }
 }
 
