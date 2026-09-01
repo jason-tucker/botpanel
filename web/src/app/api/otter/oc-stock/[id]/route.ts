@@ -2,10 +2,13 @@
  * PATCH /api/otter/oc-stock/[id] — partial update of one stock item.
  * DELETE /api/otter/oc-stock/[id] — drop the row entirely.
  *
- * Both gated to manager+ of `original-clothing` (or bot owner) inside the
- * handler — `withAuth({ require: 'any' })` only enforces "logged in"; the
- * capability check is the same one the page uses to render its edit
- * affordances. Every write reads the row BEFORE mutating so the audit log
+ * Both gated on the **configurable** OC-stock edit rule inside the handler
+ * — `withAuth({ require: 'any' })` only enforces "logged in"; the
+ * capability check (`resolveOcStockAccess().canEdit`, see
+ * `@/lib/otter/ocStockAccess`) is the same one the page uses to render its
+ * edit affordances. The rule set lives on the `original-clothing` business
+ * row and defaults to manager-or-owner, which is what these routes used to
+ * hard-code. Every write reads the row BEFORE mutating so the audit log
  * captures both `before` and `after` states (lets Otterbot's `/audit` slash
  * command surface a real diff). CSRF token verified by `withAuth({ csrf:
  * true })`. If the audit write itself fails we swallow that error and keep
@@ -20,7 +23,7 @@ import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { otterDb } from '@/lib/db/otter'
 import { ocStock } from '@/lib/db/schema/otter/ocStock'
-import type { AccessMap } from '@/lib/auth/perms'
+import { resolveOcStockAccess } from '@/lib/otter/ocStockAccess'
 import type { OcStockItem } from '../route'
 
 export const dynamic = 'force-dynamic'
@@ -48,11 +51,6 @@ const patchSchema = z
     { message: 'at least one field is required' },
   )
 
-function canEditOcStock(access: AccessMap): boolean {
-  const rank = access.otter.businesses['original-clothing']
-  return access.botOwner || rank === 'owner' || rank === 'manager'
-}
-
 function rowToItem(r: typeof ocStock.$inferSelect): OcStockItem {
   return {
     id: r.id,
@@ -69,7 +67,7 @@ type RouteCtx = { params: Promise<{ id: string }> }
 
 export const PATCH = withAuth<[RouteCtx]>(
   async (req, access, ctx) => {
-    if (!canEditOcStock(access)) {
+    if (!(await resolveOcStockAccess(access)).canEdit) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
@@ -151,7 +149,7 @@ export const PATCH = withAuth<[RouteCtx]>(
 
 export const DELETE = withAuth<[RouteCtx]>(
   async (_req, access, ctx) => {
-    if (!canEditOcStock(access)) {
+    if (!(await resolveOcStockAccess(access)).canEdit) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 

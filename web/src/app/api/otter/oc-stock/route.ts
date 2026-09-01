@@ -1,20 +1,22 @@
 /**
  * GET /api/otter/oc-stock — raw OC stock rows as JSON.
- * POST /api/otter/oc-stock — create a new stock item (manager+ of `original-clothing`).
+ * POST /api/otter/oc-stock — create a new stock item (OC-stock editors).
  *
  * GET mirrors what `/otter/oc-stock` server-renders, but as data — useful for
  * future client-side polling and for the manage flow's optimistic update
- * reconciliation. Gated to `'any'` since OC stock is publicly visible in
- * Discord. DB unavailable: 200 with `{ items: [], error: 'db-unavailable' }`
- * — degrade-don't-break.
+ * reconciliation. DB unavailable: 200 with `{ items: [], error:
+ * 'db-unavailable' }` — degrade-don't-break.
  *
- * POST is the first write surface in the panel. We gate as `'any'` at the
- * middleware layer and then re-check **manager-or-owner of `original-clothing`
- * (or bot owner)** inside the handler — this matches the page-level `canEdit`
- * check exactly so the API contract and UI affordance stay in lockstep. CSRF
- * is enforced by `withAuth({ csrf: true })` (token verified against the cookie
- * by the parallel write-infra PR). Audit hooks always write via
- * `writeAudit({...})` so the unified `/audit` tail picks up every mutation.
+ * Both verbs gate as `'any'` at the middleware layer (logged in) and then
+ * re-check the **configurable** OC-stock rules inside the handler —
+ * `resolveOcStockAccess()` (see `@/lib/otter/ocStockAccess`) reads the
+ * view/edit rule set an OC owner set on the business row. GET needs
+ * `canView`, POST needs `canEdit`. These are the same calls the page makes
+ * for its affordances, so the API contract and the UI stay in lockstep.
+ * Defaults reproduce the old hard-coded behaviour: anyone signed in can
+ * read, manager+ can write. CSRF is enforced by `withAuth({ csrf: true })`.
+ * Audit hooks always write via `writeAudit({...})` so the unified `/audit`
+ * tail picks up every mutation.
  */
 import { NextResponse, type NextRequest } from 'next/server'
 import { asc, sql } from 'drizzle-orm'
@@ -23,7 +25,7 @@ import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { otterDb } from '@/lib/db/otter'
 import { ocStock } from '@/lib/db/schema/otter/ocStock'
-import type { AccessMap } from '@/lib/auth/perms'
+import { resolveOcStockAccess } from '@/lib/otter/ocStockAccess'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -53,13 +55,12 @@ const createSchema = z.object({
     .or(z.literal('').transform(() => undefined)),
 })
 
-function canEditOcStock(access: AccessMap): boolean {
-  const rank = access.otter.businesses['original-clothing']
-  return access.botOwner || rank === 'owner' || rank === 'manager'
-}
-
 export const GET = withAuth(
-  async (_req: NextRequest) => {
+  async (_req: NextRequest, access) => {
+    if (!(await resolveOcStockAccess(access)).canView) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
     try {
       const rows = await otterDb
         .select()
@@ -87,7 +88,7 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   async (req: NextRequest, access) => {
-    if (!canEditOcStock(access)) {
+    if (!(await resolveOcStockAccess(access)).canEdit) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 

@@ -1,18 +1,25 @@
 /**
  * /otter/oc-stock — Original Clothing stock viewer + manager.
  *
- * Mirrors the same `/oc` board that Otterbot renders in Discord. Stock state
- * is shown publicly in-server, so this page is intentionally NOT sudo-gated —
- * any signed-in panel user can see it. (The edge middleware in
- * `web/src/middleware.ts` already bounces un-authed `/otter/*` to `/`, so the
- * only gate here is "have a session"; we re-check inside the component too so
- * a stale build never accidentally renders an authed-only shell to a logged-
- * out viewer.)
+ * Mirrors the same `/oc` board that Otterbot renders in Discord.
  *
- * Edit capability is detected up front via `resolveAccess()`. Owners /
- * managers of the `original-clothing` business (or the bot owner) get the
- * full manage UI (add / edit / delete via `<OcStockManager>` client
- * component). Non-editors get the same read-only card grid they had before.
+ * Who gets in is **configurable**: an OC business owner (or the bot owner)
+ * sets a minimum rank plus an optional Discord-role allowlist for "can see"
+ * and "can edit" from the Access card on this page. The rules live on the
+ * `original-clothing` business row; `@/lib/otter/ocStockAccess` owns the
+ * model, the defaults (see: anyone signed in, edit: manager+ — i.e. exactly
+ * what this page used to hard-code) and the never-lock-yourself-out escape
+ * hatch. The same helper gates every `/api/otter/oc-stock/**` route, so the
+ * affordances here can't drift from what the API allows.
+ *
+ * Viewers who fail the see-rule get a short "no access" card rather than a
+ * redirect — the nav link is already hidden for them, and a silent bounce
+ * to /me reads like a bug. (The edge middleware in `web/src/middleware.ts`
+ * bounces un-authed `/otter/*` to `/`; we re-check the session here too so a
+ * stale build never renders an authed-only shell to a logged-out viewer.)
+ *
+ * Editors get the full manage UI (add / edit / delete via `<OcStockManager>`
+ * client component); everyone else who can see gets the read-only card grid.
  *
  * DB-unavailable: every read is try/catch'd so a downed otter Postgres falls
  * back to a friendly "stock not available right now" card instead of 500-ing
@@ -29,8 +36,10 @@ import { resolveAccess } from '@/lib/auth/perms'
 import { otterDb } from '@/lib/db/otter'
 import { ocStock } from '@/lib/db/schema/otter/ocStock'
 import { OcStockManager, type OcStockItem } from './OcStockManager'
+import { OcStockAccessCard } from './OcStockAccessCard'
 import { BusinessMessageEditor } from '@/components/otter/BusinessMessageEditor'
 import { loadBusinessMessages } from '@/lib/otter/businessMessages'
+import { evaluateOcStockAccess, loadOcStockAccess } from '@/lib/otter/ocStockAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -165,8 +174,31 @@ export default async function OcStockPage() {
   if (!session) redirect('/')
 
   const access = await resolveAccess(session)
-  const ocRank = access.otter.businesses['original-clothing']
-  const canEdit = access.botOwner || ocRank === 'owner' || ocRank === 'manager'
+  const accessConfig = await loadOcStockAccess()
+  const { canView, canEdit, canConfigure } = evaluateOcStockAccess(access, accessConfig)
+
+  if (!canView) {
+    return (
+      <main className="min-h-dvh p-6 sm:p-10">
+        <div className="max-w-2xl mx-auto flex flex-col gap-6">
+          <h1 className="text-2xl font-semibold">Original Clothing — Stock</h1>
+          <section className="rounded-2xl border border-line bg-bg-card p-6">
+            <div className="text-xs uppercase tracking-wider text-ink-dim mb-2">
+              No access
+            </div>
+            <p className="text-ink">
+              The OC stock board is restricted. Ask an Original Clothing owner
+              to widen the access rules or to give you one of the allowed
+              roles.
+            </p>
+          </section>
+          <Link href="/me" className="text-sm text-ink-dim hover:text-ink">
+            ← Dashboard
+          </Link>
+        </div>
+      </main>
+    )
+  }
 
   const result = await loadStock()
 
@@ -201,6 +233,8 @@ export default async function OcStockPage() {
             </Link>
           </div>
         </header>
+
+        {canConfigure && <OcStockAccessCard config={accessConfig} />}
 
         {canEdit && messagesResult && (
           messagesResult.ok ? (

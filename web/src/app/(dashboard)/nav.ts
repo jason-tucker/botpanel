@@ -17,6 +17,11 @@
  *  - Otter nav requires a non-empty business map (or owner).
  *  - MKE link requires an MKE rank (or owner).
  *  - Sudo section requires sudo/owner; owner-only links are gated again.
+ *
+ * A few links can't be decided from the AccessMap alone because their gate
+ * lives in a DB-backed config (OC Stock's configurable view rule). Those
+ * arrive pre-computed in `flags`, resolved by the layout — `buildNav` stays
+ * synchronous and pure.
  */
 import type { IconName } from '@/components/ui/icons'
 import type { AccessMap } from '@/lib/auth/perms'
@@ -52,10 +57,23 @@ type SessionLike = {
   guildIds?: string[]
 }
 
+/** Pre-resolved gates that need I/O the (sync) nav builder can't do. */
+export type NavFlags = {
+  /** Viewer passes the configurable OC-stock "can see" rule. */
+  ocStockVisible?: boolean
+  /**
+   * Viewer holds no Otter business rank but was let into OC Stock by the
+   * rule set's Discord-role allowlist. They get an Otter section holding
+   * that one link, so a role grant is actually reachable from the nav.
+   */
+  ocStockRoleGrant?: boolean
+}
+
 export function buildNav(
   access: AccessMap,
   session: SessionLike,
   squishyGuildId: string | null,
+  flags: NavFlags = {},
 ): NavModel {
   // ─── Visibility gates (ported verbatim from the old Sidebar) ───────────
   const guildIdsKnown = Array.isArray(session.guildIds)
@@ -149,7 +167,12 @@ export function buildNav(
       { href: '/otter/businesses', label: 'Businesses', icon: 'businesses', keywords: 'portal roster owners' },
     ]
     if (showMke) otterItems.push({ href: '/otter/mke', label: 'MKE', icon: 'mke', keywords: 'mckenzie lookup' })
-    otterItems.push({ href: '/otter/oc-stock', label: 'OC Stock', icon: 'stock', keywords: 'original clothing inventory' })
+    // OC Stock's audience is operator-configurable — the layout resolves
+    // the rule and passes the answer down. Unknown (flag omitted) shows
+    // the link rather than hiding a page the user may well be able to open.
+    if (flags.ocStockVisible !== false) {
+      otterItems.push({ href: '/otter/oc-stock', label: 'OC Stock', icon: 'stock', keywords: 'original clothing inventory' })
+    }
     otterItems.push({ href: '/otter/caked', label: 'Caked', icon: 'caked', keywords: 'caked up bakery' })
     sections.push({
       id: 'otter',
@@ -158,6 +181,23 @@ export function buildNav(
       href: '/otter/businesses',
       accent: 'gold',
       groups: [{ items: otterItems }],
+    })
+  } else if (flags.ocStockRoleGrant && flags.ocStockVisible !== false) {
+    // Role-granted OC-stock viewer with no Otter rank: one link, no
+    // Businesses / MKE / Caked entries they'd only be denied on.
+    sections.push({
+      id: 'otter',
+      label: 'Otter',
+      icon: 'otter',
+      href: '/otter/oc-stock',
+      accent: 'gold',
+      groups: [
+        {
+          items: [
+            { href: '/otter/oc-stock', label: 'OC Stock', icon: 'stock', keywords: 'original clothing inventory' },
+          ],
+        },
+      ],
     })
   }
 
