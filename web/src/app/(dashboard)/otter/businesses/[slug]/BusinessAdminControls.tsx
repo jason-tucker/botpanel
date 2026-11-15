@@ -260,6 +260,8 @@ function AddMappingForm({ slug }: { slug: string }): React.JSX.Element {
         </select>
       </label>
       <label className="flex items-center gap-2 text-xs text-ink">
+        {/* Unchecked boxes are not submitted; this hidden field sends an explicit false (the checkbox, later in the form, wins when checked). */}
+        <input type="hidden" name="isBase" value="false" />
         <input
           type="checkbox"
           name="isBase"
@@ -272,6 +274,8 @@ function AddMappingForm({ slug }: { slug: string }): React.JSX.Element {
         </span>
       </label>
       <label className="flex items-center gap-2 text-xs text-ink">
+        {/* Unchecked boxes are not submitted; this hidden field sends an explicit false (the checkbox, later in the form, wins when checked). */}
+        <input type="hidden" name="autoGrantEmployee" value="false" />
         <input
           type="checkbox"
           name="autoGrantEmployee"
@@ -343,6 +347,8 @@ function EditMappingRow({
         </select>
       </label>
       <label className="flex items-center gap-2 text-xs text-ink">
+        {/* Unchecked boxes are not submitted; this hidden field sends an explicit false (the checkbox, later in the form, wins when checked). */}
+        <input type="hidden" name="isBase" value="false" />
         <input
           type="checkbox"
           name="isBase"
@@ -353,6 +359,8 @@ function EditMappingRow({
         <span>Base role</span>
       </label>
       <label className="flex items-center gap-2 text-xs text-ink">
+        {/* Unchecked boxes are not submitted; this hidden field sends an explicit false (the checkbox, later in the form, wins when checked). */}
+        <input type="hidden" name="autoGrantEmployee" value="false" />
         <input
           type="checkbox"
           name="autoGrantEmployee"

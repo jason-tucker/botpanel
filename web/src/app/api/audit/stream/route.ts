@@ -131,6 +131,9 @@ export const GET = withAuth(
     let heartbeat: NodeJS.Timeout | null = null
     let pmessageHandler: ((pattern: string, channel: string, message: string) => void) | null = null
     let closed = false
+    // One idempotent teardown shared by the abort signal and the stream's
+    // cancel(); both paths must drop the 'pmessage' AND 'ready' listeners.
+    let cleanup: (() => void) | null = null
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -173,7 +176,7 @@ export const GET = withAuth(
           send(`: keep-alive ${Date.now()}\n\n`)
         }, HEARTBEAT_MS)
 
-        const cleanup = () => {
+        cleanup = () => {
           if (closed) return
           closed = true
           if (heartbeat) {
@@ -182,9 +185,9 @@ export const GET = withAuth(
           }
           if (pmessageHandler) {
             sub.off('pmessage', pmessageHandler)
-            sub.off('ready', resubscribe)
             pmessageHandler = null
           }
+          sub.off('ready', resubscribe)
           // NOTE: we intentionally do NOT `punsubscribe` — the redis
           // subscriber is a shared singleton and other tabs/clients may
           // still need the same pattern. Letting the subscription persist
@@ -200,15 +203,7 @@ export const GET = withAuth(
         req.signal.addEventListener('abort', cleanup)
       },
       cancel() {
-        closed = true
-        if (heartbeat) {
-          clearInterval(heartbeat)
-          heartbeat = null
-        }
-        if (pmessageHandler) {
-          sub.off('pmessage', pmessageHandler)
-          pmessageHandler = null
-        }
+        cleanup?.()
       },
     })
 

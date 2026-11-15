@@ -28,7 +28,7 @@
  * rate-limited 30/min/actor (same envelope as every other Wave-6+ write).
  */
 import { NextResponse, type NextRequest } from 'next/server'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
@@ -142,16 +142,31 @@ export const POST = withAuth<[RouteCtx]>(
     // Mark the row as granted FIRST. If the Discord grant fails downstream
     // we still want the queue cleared (the spec says: include the error in
     // the response so the operator can apply it by hand).
+    // The UPDATE is the atomic claim: it only matches while the row is
+    // still `pending`, so of two concurrent approvals exactly one gets a
+    // row back and runs `staff.grant`; the other gets 409.
     const decidedAt = new Date()
     try {
-      await squishyDb
+      const claimed = await squishyDb
         .update(squishySchema.staffApprovals)
         .set({
           status: 'granted',
           reviewedBy: access.actor.id,
           reviewedAt: decidedAt,
         })
-        .where(eq(squishySchema.staffApprovals.id, id))
+        .where(
+          and(
+            eq(squishySchema.staffApprovals.id, id),
+            eq(squishySchema.staffApprovals.status, 'pending'),
+          ),
+        )
+        .returning({ id: squishySchema.staffApprovals.id })
+      if (claimed.length === 0) {
+        return NextResponse.json(
+          { error: 'already-decided' },
+          { status: 409 },
+        )
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
       console.error('[staff-approvals/approve] update failed', err)

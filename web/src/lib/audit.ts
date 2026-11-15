@@ -36,6 +36,13 @@ export type AuditEvent = {
   action: string
   targetType?: string | null
   targetId?: string | null
+  /**
+   * Otter `businesses.id` (uuid) this event belongs to, so the row shows on
+   * the per-business audit page. Routes that use the slug as `targetId`
+   * must pass the resolved id here. When omitted, `targetType: 'business'`
+   * falls back to `targetId` (legacy behaviour).
+   */
+  businessId?: string | null
   before?: unknown
   after?: unknown
   success: boolean
@@ -77,6 +84,20 @@ async function writeSquishyAudit(p: AuditEvent): Promise<void> {
   // Settings actions map cleanly onto the existing setting_changes
   // table. The `targetId` carries the setting key.
   if (isSquishySettingAction(p.action)) {
+    // `setting_changes` has no success column, so a failed attempt would
+    // read as a real change in the bot's history. Only successful writes
+    // are inserted; failures stay a console breadcrumb.
+    if (!p.success) {
+      console.info('[audit] squishy setting change failed (not inserted)', {
+        key: p.targetId,
+        actor: p.actor.id,
+        viewing: p.viewing.id,
+        via: 'web',
+        success: false,
+        errorMessage: p.errorMessage,
+      })
+      return
+    }
     try {
       const { squishyDb } = await import('./db/squishy')
       await squishyDb.insert(settingChanges).values({
@@ -123,7 +144,12 @@ async function writeOtterAudit(p: AuditEvent): Promise<void> {
     // Otter's audit_logs has dedicated columns for actor + business +
     // target; impersonation context, before/after snapshots, and
     // forensic hashes ride in the JSONB `details` column.
-    const businessId = p.targetType === 'business' ? p.targetId ?? null : null
+    const businessId =
+      p.businessId !== undefined
+        ? p.businessId
+        : p.targetType === 'business'
+          ? p.targetId ?? null
+          : null
     const details: Record<string, unknown> = {
       via: 'web',
       viewing: p.viewing.id === p.actor.id ? null : p.viewing.id,

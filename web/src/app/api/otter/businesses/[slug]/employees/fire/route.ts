@@ -91,6 +91,7 @@ export const POST = withAuth<[RouteCtx]>(
     if (await isDbOwner(businessId, body.userId)) {
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'employee.fire',
@@ -112,6 +113,7 @@ export const POST = withAuth<[RouteCtx]>(
     if (!reply.ok) {
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'employee.fire',
@@ -134,6 +136,7 @@ export const POST = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'employee.fire',

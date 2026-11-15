@@ -35,6 +35,7 @@ import { z } from 'zod'
 import { withAuth } from '@/lib/auth/middleware'
 import type { AccessMap } from '@/lib/auth/perms'
 import { writeAudit } from '@/lib/audit'
+import { formBoolean } from '@/lib/forms/formValues'
 import { otterDb } from '@/lib/db/otter'
 import {
   businesses,
@@ -54,8 +55,8 @@ const bodySchema = z.object({
     .regex(SNOWFLAKE_RE, 'roleId must be a Discord snowflake (15-25 digits)'),
   roleName: z.string().trim().min(1).max(200),
   rank: z.enum(RANK_VALUES),
-  isBase: z.boolean().optional(),
-  autoGrantEmployee: z.boolean().optional(),
+  isBase: formBoolean.optional(),
+  autoGrantEmployee: formBoolean.optional(),
   // `null` → reset to schema default ('manager') by omitting from the patch.
   minRankToAssign: z
     .union([z.enum(RANK_VALUES), z.null()])
@@ -232,6 +233,7 @@ export const POST = withAuth<[RouteCtx]>(
     if (conflictWithOtherBusiness) {
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'role_mapping.added',
@@ -293,6 +295,7 @@ export const POST = withAuth<[RouteCtx]>(
       console.warn('[api/otter/role-mappings POST] upsert failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action,
@@ -308,6 +311,7 @@ export const POST = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action,

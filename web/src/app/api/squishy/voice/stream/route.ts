@@ -102,9 +102,17 @@ export const GET = withAuth(
           // they're already inside or own/host. Visibility set is
           // mutated in place by member_join / member_leave / new-channel
           // events that affect the viewer themselves.
+          // Field names follow squishybot's eventBus payloads:
+          // member_join / member_leave carry `channelId` + `userId`;
+          // channel_created / channel_deleted carry `voiceChannelId` +
+          // `ownerUserId`; owner_changed carries `newOwnerUserId`.
           const payload = parsed as Record<string, unknown> | null
           const eventChannelId =
-            typeof payload?.voiceChannelId === 'string' ? payload.voiceChannelId : null
+            typeof payload?.voiceChannelId === 'string'
+              ? payload.voiceChannelId
+              : typeof payload?.channelId === 'string'
+                ? payload.channelId
+                : null
 
           if (!viewerIsPriv) {
             if (!eventChannelId) return // unparseable payload — silently drop
@@ -113,13 +121,15 @@ export const GET = withAuth(
                 ? payload.userId
                 : typeof payload?.newOwnerUserId === 'string'
                   ? payload.newOwnerUserId
-                  : null
+                  : typeof payload?.ownerUserId === 'string'
+                    ? payload.ownerUserId
+                    : null
 
             // Member-join / new-channel events involving the VIEWER themselves
             // extend visibility. Member-leave events involving the viewer
             // emit one final frame (so the client can remove the row from
             // its UI) before contracting visibility.
-            if ((event === 'member_join' || event === 'created') && eventUserId === viewerId) {
+            if ((event === 'member_join' || event === 'channel_created') && eventUserId === viewerId) {
               visibleChannelIds.add(eventChannelId)
             }
             const inSet = visibleChannelIds.has(eventChannelId)
@@ -131,7 +141,7 @@ export const GET = withAuth(
               // sees for this channel unless they're still owner/host).
               visibleChannelIds.delete(eventChannelId)
             }
-            if (event === 'deleted') {
+            if (event === 'channel_deleted') {
               visibleChannelIds.delete(eventChannelId)
             }
           }

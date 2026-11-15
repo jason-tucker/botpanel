@@ -125,6 +125,8 @@ type OtterAccess = { ranks: Record<string, BusinessRank>; roleIds: string[] }
 
 const otterRanksCache = new Map<string, { value: OtterAccess; expiresAt: number }>()
 const OTTER_RANKS_TTL_MS = 60_000
+// Failed lookups (bot down / timeout) are cached for a short window only.
+const OTTER_RANKS_FAILURE_TTL_MS = 10_000
 // Expired entries used to linger forever (reads delete-on-miss only for
 // the key being read), so the map grew one stale entry per distinct
 // visitor for the process lifetime. Sweep opportunistically on insert
@@ -161,11 +163,15 @@ async function loadOtterBusinesses(userId: string): Promise<OtterAccess> {
       { timeoutMs: 3000 },
     )
     if (!reply.ok) {
-      // Bot down / unreachable — return empty (no rank). Worse than a
-      // wrong answer, but a missing answer is recoverable on next page
-      // load. Don't cache the empty result so we retry instead of
-      // wedging the user out for 60s.
+      // Bot down / unreachable — return empty (no rank). Cache the empty
+      // result briefly (not the full 60s) so a downed otterbot doesn't make
+      // every request wait out the 3s RPC timeout, while still retrying soon.
       console.warn('[perms] business.user_ranks failed; returning {}', reply.error)
+      sweepOtterRanksCache(now)
+      otterRanksCache.set(userId, {
+        value: EMPTY_OTTER_ACCESS,
+        expiresAt: now + OTTER_RANKS_FAILURE_TTL_MS,
+      })
       return EMPTY_OTTER_ACCESS
     }
     const ranks: Record<string, BusinessRank> = {}

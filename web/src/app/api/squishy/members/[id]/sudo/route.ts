@@ -25,6 +25,7 @@ import { eq } from 'drizzle-orm'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { callBot } from '@/lib/botrpc'
+import { parseFormBoolean } from '@/lib/forms/formValues'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 
 export const runtime = 'nodejs'
@@ -53,8 +54,9 @@ export const POST = withAuth(
     } catch {
       return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 })
     }
-    const enabled = (body as { enabled?: unknown } | null)?.enabled
-    if (typeof enabled !== 'boolean') {
+    // SudoToggleCard posts through <ServerForm>, which sends "true"/"false".
+    const enabled = parseFormBoolean((body as { enabled?: unknown } | null)?.enabled)
+    if (enabled === undefined) {
       return NextResponse.json(
         { error: 'enabled must be boolean' },
         { status: 400 },

@@ -92,6 +92,7 @@ export const POST = withAuth<[RouteCtx]>(
     if (!reply.ok) {
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'employee.promote',
@@ -114,6 +115,7 @@ export const POST = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'employee.promote',
