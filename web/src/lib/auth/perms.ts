@@ -19,6 +19,7 @@ import { cache } from 'react'
 import { sql } from 'drizzle-orm'
 import { env } from '../env'
 import type { Session } from './session'
+import { capViewAsCaps } from './viewAsCaps'
 
 // The spec refers to `session.sub` / `session.username` / `session.avatar`.
 // Our JWT payload (see ./session.ts) uses `id` rather than `sub`. Accept
@@ -189,7 +190,7 @@ async function loadOtterBusinesses(userId: string): Promise<OtterAccess> {
   }
 }
 
-type ResolvedCaps = {
+export type ResolvedCaps = {
   botOwner: boolean
   squishy: AccessMap['squishy']
   otter: AccessMap['otter']
@@ -267,7 +268,11 @@ export async function resolveAccess(
 
   // View-As gate. Sudo and bot-owner can impersonate; everyone else
   // silently falls back to self-resolution (no surprise privilege grant).
-  const canImpersonate = actorCaps.botOwner || actorCaps.squishy.sudo
+  // Only the bot owner may view as the bot owner (a cookie set before this
+  // rule existed, or forged, falls back to self-resolution).
+  const canImpersonate =
+    (actorCaps.botOwner || actorCaps.squishy.sudo) &&
+    (opts.viewAsUserId !== env.BOT_OWNER_ID || actorCaps.botOwner)
   if (!canImpersonate) {
     return {
       actor,
@@ -291,8 +296,6 @@ export async function resolveAccess(
   return {
     actor, // always the real user — never overwritten
     viewing: target,
-    botOwner: targetCaps.botOwner,
-    squishy: targetCaps.squishy,
-    otter: targetCaps.otter,
+    ...capViewAsCaps(actorCaps, targetCaps),
   }
 }

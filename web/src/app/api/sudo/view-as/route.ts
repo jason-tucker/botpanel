@@ -34,6 +34,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
+import { env } from '@/lib/env'
 import {
   getViewAsUserIdFromRequest,
   setViewAsCookie,
@@ -72,6 +73,14 @@ export const POST = withAuth(
     // route, but the explicit check makes the intent obvious if someone
     // ever loosens the wrapper.
     if (!(access.botOwner || access.squishy.sudo)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
+    // Only the bot owner may view as the bot owner. Uses the REAL actor id,
+    // not `access.botOwner`, which reflects any View-As already in effect.
+    // `resolveAccess` enforces the same rule and caps View-As capabilities
+    // at the actor's own, so this is the user-facing refusal.
+    if (userId === env.BOT_OWNER_ID && access.actor.id !== env.BOT_OWNER_ID) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
