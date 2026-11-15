@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- fix(otter): every Otter RPC call from the panel now sends `actorUserId` (the real signed-in user, never the View-As target) — employee hire/fire/promote/demote, sync-roles, roster, OC-stock post, Caked post, report and the meta channel/member/role lookups — so otterbot can re-verify and audit who acted.
 - fix(security): View-As can no longer raise capabilities above the real actor's — `botOwner` and `squishy.sudo` under View-As are now the target's value AND the actor's (`src/lib/auth/viewAsCaps.ts`), so a sudo viewing as the bot owner no longer passes `require: 'botOwner'` routes; View-As targeting `BOT_OWNER_ID` is refused unless the actor is the bot owner. Otter business ranks are capped too (next entry).
 - fix(security): View-As now caps Otter business ranks at the real actor's — each business is the lower of the actor's and the target's rank (owner > manager > employee), businesses where the actor has no rank are dropped, and `otter.roleIds` is the intersection of both sets, so a sudo viewing an Original Clothing owner can no longer hire themselves as owner or change role mappings / OC-stock access. A bot-owner actor keeps the target's ranks.
 - fix: Grant/Revoke sudo on `/squishy/members/[id]` no longer always 400s — `POST /api/squishy/members/[id]/sudo` accepts the `"true"`/`"false"` strings the form posts.

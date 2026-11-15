@@ -62,7 +62,7 @@ const MKE_SLUGS = new Set(['mckenzie', 'mke'])
 type RouteCtx = { params: Promise<{ slug: string }> }
 
 export const GET = withAuth<[RouteCtx]>(
-  async (req: NextRequest, _access, ctx) => {
+  async (req: NextRequest, access, ctx) => {
     const { slug } = await ctx.params
 
     if (MKE_SLUGS.has(slug)) {
@@ -86,6 +86,7 @@ export const GET = withAuth<[RouteCtx]>(
 
     const reply = await callBot<RosterReply>('otter', 'business.roster', {
       businessSlug: slug,
+      actorUserId: access.actor.id,
     })
 
     if (!reply.ok) {

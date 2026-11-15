@@ -28,7 +28,7 @@ const cache = new Map<string, Cached>()
 const VALID_TYPES = new Set(['text', 'voice', 'category', 'forum', 'announcement'])
 
 export const GET = withAuth(
-  async (req: NextRequest) => {
+  async (req: NextRequest, access) => {
     const raw = req.nextUrl.searchParams.get('types') ?? ''
     const types = raw
       .split(',')
@@ -41,7 +41,10 @@ export const GET = withAuth(
       return NextResponse.json({ channels: hit.payload.channels, cached: true })
     }
 
-    const params = types.length > 0 ? { types } : {}
+    const params =
+      types.length > 0
+        ? { types, actorUserId: access.actor.id }
+        : { actorUserId: access.actor.id }
     const reply = await callBot<{ channels: ChannelRow[] }>('otter', 'meta.list_channels', params)
     if (!reply.ok) {
       return NextResponse.json({ channels: [], error: reply.error })

@@ -28,7 +28,7 @@ type MemberRow = {
 }
 
 export const GET = withAuth(
-  async (req: NextRequest) => {
+  async (req: NextRequest, access) => {
     const q = (req.nextUrl.searchParams.get('q') ?? '').slice(0, 100)
     const limitRaw = req.nextUrl.searchParams.get('limit')
     let limit = 25
@@ -40,7 +40,7 @@ export const GET = withAuth(
     const reply = await callBot<{ members: MemberRow[] }>(
       'otter',
       'meta.list_members',
-      { query: q, limit },
+      { query: q, limit, actorUserId: access.actor.id },
     )
     if (!reply.ok) {
       return NextResponse.json({ members: [], error: reply.error })

@@ -80,9 +80,15 @@ export const POST = withAuth(
 
     // Strip body for non-announcement kinds — the bot ignores it anyway,
     // but keeping the payload tight makes the audit row easier to read.
-    const params: { channelId: string; kind: CakedKind; body?: string } = {
+    const params: {
+      channelId: string
+      kind: CakedKind
+      body?: string
+      actorUserId: string
+    } = {
       channelId: parsed.channelId,
       kind,
+      actorUserId: access.actor.id,
     }
     if (kind === 'announcement' && parsed.body) {
       params.body = parsed.body

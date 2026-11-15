@@ -64,6 +64,7 @@ export const POST = withAuth<[RouteCtx]>(
 
     const reply = await callBot<SyncRolesData>('otter', 'business.sync_roles', {
       businessSlug: slug,
+      actorUserId: access.actor.id,
     })
 
     await writeAudit({

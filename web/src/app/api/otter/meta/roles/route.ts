@@ -34,13 +34,15 @@ const CACHE_KEY = 'roles'
 const cache = new Map<string, Cached>()
 
 export const GET = withAuth(
-  async (_req: NextRequest) => {
+  async (_req: NextRequest, access) => {
     const hit = cache.get(CACHE_KEY)
     if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
       return NextResponse.json({ roles: hit.payload.roles, cached: true })
     }
 
-    const reply = await callBot<{ roles: RoleRow[] }>('otter', 'meta.list_roles', {})
+    const reply = await callBot<{ roles: RoleRow[] }>('otter', 'meta.list_roles', {
+      actorUserId: access.actor.id,
+    })
     if (!reply.ok) {
       return NextResponse.json({ roles: [], error: reply.error })
     }

@@ -97,7 +97,12 @@ export const POST = withAuth<[RouteCtx]>(
     const reply = await callBot<{ before: string | null; after: string | null }>(
       'otter',
       'employee.hire',
-      { businessSlug: slug, userId: body.userId, rank: body.rank },
+      {
+        businessSlug: slug,
+        userId: body.userId,
+        rank: body.rank,
+        actorUserId: access.actor.id,
+      },
     )
 
     if (!reply.ok) {
