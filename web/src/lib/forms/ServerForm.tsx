@@ -34,6 +34,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
+import { describeError } from '@/lib/rpcErrors'
 
 export type ServerFormProps = {
   action: string
@@ -98,7 +99,7 @@ function bustCsrfCache(): void {
 function readErrorMessage(parsed: unknown, fallback: string): string {
   if (parsed && typeof parsed === 'object') {
     const o = parsed as Record<string, unknown>
-    if (typeof o.error === 'string') return o.error
+    if (typeof o.error === 'string') return describeError(o.error)
     if (typeof o.message === 'string') return o.message
     if (Array.isArray(o.errors) && o.errors.length > 0) {
       const first = o.errors[0]

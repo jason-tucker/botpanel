@@ -26,6 +26,7 @@
  */
 import { useState, type ReactNode } from 'react'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { describeError } from '@/lib/rpcErrors'
 
 type Kind = 'contact' | 'event' | 'pricing' | 'announcement'
 
@@ -111,7 +112,7 @@ function CardForm({
     } else {
       const detail =
         typeof reply.details === 'string' ? `: ${reply.details}` : ''
-      setStatus({ ok: false, text: `Bot returned ${reply.error}${detail}` })
+      setStatus({ ok: false, text: `Bot returned ${describeError(reply.error)}${detail}` })
     }
   }
 
