@@ -167,8 +167,10 @@ Key vars parsed in `src/lib/env.ts` (full list in `.env.example`):
 | `SUDO_USER_IDS` | Comma-separated snowflakes for implicit Squishy sudo (env path). |
 | `GUILD_ID` | The guild the bots serve. |
 | `PUBLIC_BASE_URL` | Cookie domain / OAuth redirect / CSRF origin. Never hardcoded. |
-| `REDIS_URL` | Defaults to `redis://redis:6379`. |
+| `REDIS_URL` | Defaults to `redis://redis:6379`. With Redis AUTH on: `redis://:<REDIS_PASSWORD>@redis:6379` (panel and both bots). Never log it raw; use `redactRedisUrl` (`src/lib/util/redact.ts`). |
+| `REDIS_PASSWORD` | Optional; read by the `redis` compose service only (requirepass). Empty = no AUTH. `openssl rand -hex 32`. Set every client's `REDIS_URL` before setting this. |
 | `BOTPANEL_RPC_SECRET` | HMAC key for the command bus; **must match both bot repos**. |
+| `BOTPANEL_RPC_REQUIRE_SIGNED_REPLIES` | Comma list of bots (`otter,squishy`) whose RPC replies must be signed (`src/lib/botrpcReply.ts`). Default empty: unsigned replies accepted. Bad or stale signatures are always ignored. |
 | `SQUISHY_DATABASE_URL` / `OTTER_DATABASE_URL` | Postgres connections (lazy — app boots without them). |
 | `AUDIT_HASH_SALT` | Salt for IP/UA hashing in audit rows. Set a long random value in prod. |
 | `VAPID_PUBLIC` / `VAPID_PRIVATE` / `VAPID_SUBJECT` | Web Push (VAPID). All three needed for push; otherwise subscribe routes return 503. |

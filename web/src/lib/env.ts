@@ -39,6 +39,21 @@ const schema = z.object({
   // ─── Inter-process ────────────────────────────────────────────────
   REDIS_URL: z.string().default('redis://redis:6379'),
   BOTPANEL_RPC_SECRET: z.string().min(32).optional(),
+  // Comma-separated bot names (`otter`, `squishy`) whose RPC replies must be
+  // HMAC-signed. Unsigned replies from a listed bot are ignored (the call
+  // ends `reply-rejected`). Default empty: unsigned replies are accepted.
+  BOTPANEL_RPC_REQUIRE_SIGNED_REPLIES: z
+    .string()
+    .default('')
+    .transform(
+      (s): ReadonlySet<string> =>
+        new Set(
+          s
+            .split(',')
+            .map((b) => b.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+    ),
 
   // ─── Databases ────────────────────────────────────────────────────
   SQUISHY_DATABASE_URL: z.string().url().optional(),
