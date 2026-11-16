@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { exchangeCode, fetchMe, fetchGuildIds } from '@/lib/auth/discord'
-import { mintSession, setSessionCookie, newJti } from '@/lib/auth/session'
+import {
+  mintSession,
+  setSessionCookie,
+  newJti,
+  sessionCookieBytes,
+  SESSION_COOKIE_MAX_BYTES,
+} from '@/lib/auth/session'
 import { encryptToken } from '@/lib/auth/tokenCrypto'
 import { sessions as panelSessions } from '@/lib/db/schema/panel'
 import { env } from '@/lib/env'
@@ -95,9 +101,19 @@ export async function GET(req: Request) {
       // never as an authorization grant. Stays in the JWT for the
       // 3-day TTL — users moving in/out of guilds within that window
       // just see slightly stale sidebar gating until they log back in.
-      guildIds,
+      // Only the guilds the panel checks are kept (readers only test
+      // membership of GUILD_ID): the full list, up to 200 IDs, pushed the
+      // cookie past the browser's 4096-byte limit and it was dropped.
+      guildIds: env.GUILD_ID && guildIds.includes(env.GUILD_ID) ? [env.GUILD_ID] : [],
       jti,
     })
+    const cookieBytes = sessionCookieBytes(token)
+    if (cookieBytes > SESSION_COOKIE_MAX_BYTES) {
+      console.warn(
+        `[auth.callback] session cookie too large (${cookieBytes} bytes > ${SESSION_COOKIE_MAX_BYTES}) — not setting it`,
+      )
+      return NextResponse.redirect(homeUrl('?error=session_too_large'))
+    }
     await setSessionCookie(token)
     return NextResponse.redirect(homeUrl())
   } catch (err) {
