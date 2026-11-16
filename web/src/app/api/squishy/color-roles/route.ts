@@ -26,6 +26,7 @@ import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
 import { env } from '@/lib/env'
+import { parseOptionalInt } from '@/lib/forms/formValues'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -88,20 +89,15 @@ export const POST = withAuth(
       if (trimmed.length > 0) label = trimmed
     }
 
-    let sortOrder: number | null = null
-    if (body.sortOrder !== undefined && body.sortOrder !== null) {
-      if (
-        typeof body.sortOrder !== 'number' ||
-        !Number.isFinite(body.sortOrder) ||
-        !Number.isInteger(body.sortOrder)
-      ) {
-        return NextResponse.json(
-          { error: 'sortOrder must be an integer' },
-          { status: 400 },
-        )
-      }
-      sortOrder = body.sortOrder
+    // The form posts sortOrder as a string: "" means not supplied.
+    const parsedSort = parseOptionalInt(body.sortOrder)
+    if (!parsedSort.ok) {
+      return NextResponse.json(
+        { error: 'sortOrder must be an integer' },
+        { status: 400 },
+      )
     }
+    const sortOrder: number | null = parsedSort.value
 
     if (!env.GUILD_ID) {
       await writeAudit({

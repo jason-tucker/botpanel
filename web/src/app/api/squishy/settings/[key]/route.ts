@@ -146,7 +146,7 @@ export const PUT = withAuth(
         errorMessage: `value must be <= ${VALUE_MAX} chars`,
       }).catch(() => {})
       return NextResponse.json(
-        { errorMessage: `value must be <= ${VALUE_MAX} chars` },
+        { error: `value must be <= ${VALUE_MAX} chars` },
         { status: 400 },
       )
     }

@@ -29,6 +29,7 @@ import { z } from 'zod'
 import { withAuth } from '@/lib/auth/middleware'
 import type { AccessMap } from '@/lib/auth/perms'
 import { writeAudit } from '@/lib/audit'
+import { formBoolean } from '@/lib/forms/formValues'
 import { otterDb } from '@/lib/db/otter'
 import {
   businesses,
@@ -43,8 +44,8 @@ const RANK_VALUES = ['owner', 'manager', 'employee'] as const
 const patchSchema = z
   .object({
     rank: z.enum(RANK_VALUES).optional(),
-    isBase: z.boolean().optional(),
-    autoGrantEmployee: z.boolean().optional(),
+    isBase: formBoolean.optional(),
+    autoGrantEmployee: formBoolean.optional(),
     minRankToAssign: z.union([z.enum(RANK_VALUES), z.null()]).optional(),
     // Optional role-name re-label — Discord rename happens out of band, and
     // refreshing the cached name shouldn't need a delete-and-re-add cycle.
@@ -214,6 +215,7 @@ export const PATCH = withAuth<[RouteCtx]>(
       console.warn('[api/otter/role-mappings PATCH] mapping lookup failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'role_mapping.updated',
@@ -228,6 +230,7 @@ export const PATCH = withAuth<[RouteCtx]>(
     if (!before) {
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'role_mapping.updated',
@@ -263,6 +266,7 @@ export const PATCH = withAuth<[RouteCtx]>(
       console.warn('[api/otter/role-mappings PATCH] update failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'role_mapping.updated',
@@ -278,6 +282,7 @@ export const PATCH = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'role_mapping.updated',
@@ -364,6 +369,7 @@ export const DELETE = withAuth<[RouteCtx]>(
       )
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'role_mapping.removed',
@@ -378,6 +384,7 @@ export const DELETE = withAuth<[RouteCtx]>(
     if (!before) {
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'role_mapping.removed',
@@ -398,6 +405,7 @@ export const DELETE = withAuth<[RouteCtx]>(
       console.warn('[api/otter/role-mappings DELETE] delete failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'role_mapping.removed',
@@ -413,6 +421,7 @@ export const DELETE = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'role_mapping.removed',

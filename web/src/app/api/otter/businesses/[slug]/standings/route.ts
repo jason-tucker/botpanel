@@ -226,6 +226,7 @@ export const POST = withAuth<[RouteCtx]>(
       console.warn('[api/otter/standings POST] upsert failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'standing.set',
@@ -248,6 +249,7 @@ export const POST = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'standing.set',

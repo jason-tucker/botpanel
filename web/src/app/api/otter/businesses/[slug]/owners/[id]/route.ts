@@ -108,6 +108,7 @@ export const DELETE = withAuth<[RouteCtx]>(
       console.warn('[api/otter/owners DELETE] owner lookup failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'business_owner.removed',
@@ -123,6 +124,7 @@ export const DELETE = withAuth<[RouteCtx]>(
     if (!before) {
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'business_owner.removed',
@@ -141,6 +143,7 @@ export const DELETE = withAuth<[RouteCtx]>(
       console.warn('[api/otter/owners DELETE] delete failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'business_owner.removed',
@@ -156,6 +159,7 @@ export const DELETE = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'business_owner.removed',

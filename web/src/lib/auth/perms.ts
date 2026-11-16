@@ -19,6 +19,7 @@ import { cache } from 'react'
 import { sql } from 'drizzle-orm'
 import { env } from '../env'
 import type { Session } from './session'
+import { capViewAsCaps } from './viewAsCaps'
 
 // The spec refers to `session.sub` / `session.username` / `session.avatar`.
 // Our JWT payload (see ./session.ts) uses `id` rather than `sub`. Accept
@@ -124,6 +125,8 @@ type OtterAccess = { ranks: Record<string, BusinessRank>; roleIds: string[] }
 
 const otterRanksCache = new Map<string, { value: OtterAccess; expiresAt: number }>()
 const OTTER_RANKS_TTL_MS = 60_000
+// Failed lookups (bot down / timeout) are cached for a short window only.
+const OTTER_RANKS_FAILURE_TTL_MS = 10_000
 // Expired entries used to linger forever (reads delete-on-miss only for
 // the key being read), so the map grew one stale entry per distinct
 // visitor for the process lifetime. Sweep opportunistically on insert
@@ -160,11 +163,15 @@ async function loadOtterBusinesses(userId: string): Promise<OtterAccess> {
       { timeoutMs: 3000 },
     )
     if (!reply.ok) {
-      // Bot down / unreachable — return empty (no rank). Worse than a
-      // wrong answer, but a missing answer is recoverable on next page
-      // load. Don't cache the empty result so we retry instead of
-      // wedging the user out for 60s.
+      // Bot down / unreachable — return empty (no rank). Cache the empty
+      // result briefly (not the full 60s) so a downed otterbot doesn't make
+      // every request wait out the 3s RPC timeout, while still retrying soon.
       console.warn('[perms] business.user_ranks failed; returning {}', reply.error)
+      sweepOtterRanksCache(now)
+      otterRanksCache.set(userId, {
+        value: EMPTY_OTTER_ACCESS,
+        expiresAt: now + OTTER_RANKS_FAILURE_TTL_MS,
+      })
       return EMPTY_OTTER_ACCESS
     }
     const ranks: Record<string, BusinessRank> = {}
@@ -189,7 +196,7 @@ async function loadOtterBusinesses(userId: string): Promise<OtterAccess> {
   }
 }
 
-type ResolvedCaps = {
+export type ResolvedCaps = {
   botOwner: boolean
   squishy: AccessMap['squishy']
   otter: AccessMap['otter']
@@ -267,7 +274,11 @@ export async function resolveAccess(
 
   // View-As gate. Sudo and bot-owner can impersonate; everyone else
   // silently falls back to self-resolution (no surprise privilege grant).
-  const canImpersonate = actorCaps.botOwner || actorCaps.squishy.sudo
+  // Only the bot owner may view as the bot owner (a cookie set before this
+  // rule existed, or forged, falls back to self-resolution).
+  const canImpersonate =
+    (actorCaps.botOwner || actorCaps.squishy.sudo) &&
+    (opts.viewAsUserId !== env.BOT_OWNER_ID || actorCaps.botOwner)
   if (!canImpersonate) {
     return {
       actor,
@@ -291,8 +302,6 @@ export async function resolveAccess(
   return {
     actor, // always the real user — never overwritten
     viewing: target,
-    botOwner: targetCaps.botOwner,
-    squishy: targetCaps.squishy,
-    otter: targetCaps.otter,
+    ...capViewAsCaps(actorCaps, targetCaps),
   }
 }

@@ -274,6 +274,7 @@ export const POST = withAuth<[RouteCtx]>(
       console.warn('[api/otter/notes POST] insert failed', err)
       await writeAudit({
         bot: 'otter',
+        businessId,
         actor: access.actor,
         viewing: access.viewing,
         action: 'note.added',
@@ -292,6 +293,7 @@ export const POST = withAuth<[RouteCtx]>(
 
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'note.added',

@@ -15,6 +15,7 @@ import { eq } from 'drizzle-orm'
 import { withAuth } from '@/lib/auth/middleware'
 import { writeAudit } from '@/lib/audit'
 import { squishyDb, squishySchema } from '@/lib/db/squishy'
+import { parseOptionalInt } from '@/lib/forms/formValues'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -71,19 +72,15 @@ export const PATCH = withAuth(
       }
       patch.label = trimmed
     }
-    if (body.sortOrder !== undefined && body.sortOrder !== null) {
-      if (
-        typeof body.sortOrder !== 'number' ||
-        !Number.isFinite(body.sortOrder) ||
-        !Number.isInteger(body.sortOrder)
-      ) {
-        return NextResponse.json(
-          { error: 'sortOrder must be an integer' },
-          { status: 400 },
-        )
-      }
-      patch.sortOrder = body.sortOrder
+    // The form posts sortOrder as a string: "" means leave it unchanged.
+    const parsedSort = parseOptionalInt(body.sortOrder)
+    if (!parsedSort.ok) {
+      return NextResponse.json(
+        { error: 'sortOrder must be an integer' },
+        { status: 400 },
+      )
     }
+    if (parsedSort.value !== null) patch.sortOrder = parsedSort.value
     if (Object.keys(patch).length === 0) {
       return NextResponse.json(
         { error: 'no fields to patch — supply label and/or sortOrder' },

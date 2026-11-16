@@ -109,6 +109,7 @@ async function handleDelete(
     console.warn('[api/otter/notes DELETE] note lookup failed', err)
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'note.removed',
@@ -124,6 +125,7 @@ async function handleDelete(
   if (!target) {
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'note.removed',
@@ -143,6 +145,7 @@ async function handleDelete(
   if (!canDelete) {
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'note.removed',
@@ -165,6 +168,7 @@ async function handleDelete(
     console.warn('[api/otter/notes DELETE] delete failed', err)
     await writeAudit({
       bot: 'otter',
+      businessId,
       actor: access.actor,
       viewing: access.viewing,
       action: 'note.removed',
@@ -180,6 +184,7 @@ async function handleDelete(
 
   await writeAudit({
     bot: 'otter',
+    businessId,
     actor: access.actor,
     viewing: access.viewing,
     action: 'note.removed',
