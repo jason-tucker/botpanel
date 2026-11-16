@@ -190,6 +190,18 @@ export function forgetSession(jti: string): void {
   validator().forget(jti)
 }
 
+/**
+ * Treat this jti as revoked in this process until the JWT expires (`expSec`,
+ * the `exp` claim in seconds; at most the 3-day TTL), even if its
+ * `panel_sessions` row survives. For a logout whose row delete failed.
+ */
+export function revokeSession(jti: string, expSec?: number): void {
+  const until = typeof expSec === 'number' && Number.isFinite(expSec)
+    ? expSec * 1000
+    : Date.now() + TTL_SECONDS * 1000
+  validator().revoke(jti, until)
+}
+
 /** Drop every cached verdict except `keepJti` (after logout-all). */
 export function forgetOtherSessions(keepJti: string | null): void {
   validator().clearExcept(keepJti)

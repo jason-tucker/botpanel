@@ -8,7 +8,9 @@
  * Contract (fail closed with a short stale grace):
  *  - A verdict (valid or revoked) is reused for `ttlMs` (30 s), so a deleted
  *    row ends its session within that window; `forget` / `clearExcept`
- *    make it immediate in this process (logout, logout-all).
+ *    drop cached verdicts so the next check asks the store again (logout,
+ *    logout-all). They do not revoke anything: a row that survives still
+ *    reads as valid. Use `revoke` for that.
  *  - One lookup in flight per (jti, user).
  *  - Lookup error or no answer within `timeoutMs` (750 ms): a cached
  *    *valid* verdict for the same user checked within `staleGraceMs`
@@ -34,6 +36,13 @@
  *    wedge the validator for good. A late answer is never cached.
  *  - `seed` records a fresh valid verdict (a row this process just wrote).
  *  - At `maxEntries` expired entries are swept first, then the oldest go.
+ *  - `revoke(jti, untilMs)` (logout whose row delete failed or timed out)
+ *    makes every check for that jti answer 'revoked' in this process until
+ *    `untilMs` (pass the JWT's exp; capped at `maxRevokeMs`, 3 days), even if
+ *    a lookup still finds the row or a stale-valid entry would apply. It
+ *    lives in its own map, untouched by `forget`, `clearExcept` and the
+ *    `maxEntries` sweep; at `maxRevoked` (10 000) expired revocations are
+ *    swept first, then the soonest to expire go.
  */
 
 export type SessionVerdict = 'valid' | 'revoked' | 'unavailable'
@@ -49,6 +58,8 @@ export type SessionValidatorOptions = {
   unavailableMs?: number
   maxConcurrent?: number
   maxHoldMs?: number
+  maxRevoked?: number
+  maxRevokeMs?: number
   prepare?: () => Promise<void>
 }
 
@@ -57,6 +68,8 @@ export type SessionValidator = {
   /** Record a valid verdict for a row this process just inserted. */
   seed(jti: string, userId: string): void
   forget(jti: string): void
+  /** Answer 'revoked' for this jti until `untilMs`, whatever the store says. */
+  revoke(jti: string, untilMs: number): void
   clearExcept(jti: string | null): void
   /** Cached entries (for checks and diagnostics). */
   size(): number
@@ -78,8 +91,12 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
   const unavailableMs = opts.unavailableMs ?? 2_000
   const maxConcurrent = opts.maxConcurrent ?? 2
   const maxHoldMs = opts.maxHoldMs ?? 30_000
+  const maxRevoked = opts.maxRevoked ?? 10_000
+  const maxRevokeMs = opts.maxRevokeMs ?? 3 * 24 * 60 * 60 * 1000
   const prepare = opts.prepare
 
+  // jti -> time the revocation ends. Checked before anything else.
+  const revoked = new Map<string, number>()
   const cache = new Map<string, Entry>()
   const inflight = new Map<string, InFlight>()
   // Queries that outlived their budget and have not settled yet.
@@ -88,6 +105,14 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
   let unavailableUntil = 0
   // The prepare attempt still running, if any (shared by every check).
   let preparing: PrepareRun | null = null
+
+  function isRevoked(jti: string): boolean {
+    const until = revoked.get(jti)
+    if (until === undefined) return false
+    if (now() < until) return true
+    revoked.delete(jti)
+    return false
+  }
 
   function isExpired(e: Entry, t: number): boolean {
     // A valid entry still backs the stale grace; a revoked one is useless
@@ -140,12 +165,14 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
   }
 
   function fallback(jti: string, userId: string): SessionVerdict {
+    if (isRevoked(jti)) return 'revoked'
     const e = cache.get(jti)
     if (e && e.valid && e.userId === userId && now() - e.checkedAt <= staleGraceMs) return 'valid'
     return 'unavailable'
   }
 
   function check(jti: string, userId: string): Promise<SessionVerdict> {
+    if (isRevoked(jti)) return Promise.resolve('revoked')
     const hit = cache.get(jti)
     if (hit && hit.userId === userId && now() - hit.checkedAt < ttlMs) {
       return Promise.resolve(hit.valid ? 'valid' : 'revoked')
@@ -185,6 +212,8 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
       })
       try {
         const ok = await withTimeout(work, timeoutMs)
+        // revoke() ran while the lookup was out: the row may still exist.
+        if (isRevoked(jti)) return 'revoked'
         // Only record the answer if nobody called forget/clearExcept while
         // the lookup was running (it may predate the row's deletion).
         if (inflight.get(key) === self) {
@@ -219,10 +248,30 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
     for (const [k, v] of inflight) if (v.jti === jti) inflight.delete(k)
   }
 
+  function revoke(jti: string, untilMs: number): void {
+    const t = now()
+    const until = Math.min(untilMs, t + maxRevokeMs)
+    forget(jti)
+    if (until <= t) return
+    const prev = revoked.get(jti) ?? 0
+    revoked.delete(jti) // re-insert below; never shortens an existing one
+    if (revoked.size >= maxRevoked) {
+      for (const [k, u] of revoked) if (u <= t) revoked.delete(k)
+      while (revoked.size >= maxRevoked) {
+        let soonest: string | null = null
+        let soonestAt = Infinity
+        for (const [k, u] of revoked) if (u < soonestAt) { soonest = k; soonestAt = u }
+        if (soonest === null) break
+        revoked.delete(soonest)
+      }
+    }
+    revoked.set(jti, Math.max(until, prev))
+  }
+
   function clearExcept(keep: string | null): void {
     for (const k of [...cache.keys()]) if (k !== keep) cache.delete(k)
     for (const [k, v] of inflight) if (v.jti !== keep) inflight.delete(k)
   }
 
-  return { check, seed, forget, clearExcept, size: () => cache.size }
+  return { check, seed, forget, revoke, clearExcept, size: () => cache.size }
 }

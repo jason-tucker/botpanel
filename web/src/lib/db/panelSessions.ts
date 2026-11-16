@@ -18,8 +18,9 @@
  * something else holds the table (pg_dump, an open psql transaction) the
  * attempt fails fast and is retried a minute later instead of blocking.
  */
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { squishyDb } from './squishy'
+import { sessions } from './schema/panel'
 
 const RETRY_MS = 60_000
 
@@ -118,4 +119,82 @@ export function dbErrorText(err: unknown): string {
   if (!(inner instanceof Error)) return 'unknown error'
   const code = (inner as { code?: unknown }).code
   return typeof code === 'string' ? `${code} ${inner.message}` : inner.message
+}
+
+/** Caller-side cap on the logout row delete. */
+export const SESSION_DELETE_BUDGET_MS = 1_000
+
+export type BoundedResult<T> = { ok: true; value: T } | { ok: false; reason: 'failed' | 'timeout'; error?: unknown }
+
+/**
+ * Wait for `work` at most `budgetMs`. Never throws; the timer is always
+ * cleared. A late rejection of an abandoned `work` is swallowed.
+ */
+export async function runBounded<T>(work: Promise<T>, budgetMs: number): Promise<BoundedResult<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<BoundedResult<T>>((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, reason: 'timeout' }), budgetMs)
+  })
+  try {
+    return await Promise.race([
+      work.then(
+        (value): BoundedResult<T> => ({ ok: true, value }),
+        (error): BoundedResult<T> => ({ ok: false, reason: 'failed', error }),
+      ),
+      timeout,
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Delete one `panel_sessions` row without ever hanging the caller: the DB
+ * side gives up after 800 ms (lock_timeout / statement_timeout, SET LOCAL
+ * inside a transaction), the caller after `budgetMs`. Never throws.
+ */
+export async function deleteSessionRowBounded(
+  jti: string,
+  budgetMs: number = SESSION_DELETE_BUDGET_MS,
+): Promise<BoundedResult<void>> {
+  return runBounded(
+    squishyDb.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL lock_timeout = '800ms'`)
+      await tx.execute(sql`SET LOCAL statement_timeout = '800ms'`)
+      await tx.delete(sessions).where(eq(sessions.id, jti))
+    }),
+    budgetMs,
+  )
+}
+
+/** Delay before the one background retry of a failed logout row delete. */
+export const SESSION_DELETE_RETRY_MS = 5_000
+
+/**
+ * Fire-and-forget: try `deleteSessionRowBounded` once more after `delayMs`.
+ * Never throws and never rejects; the outcome is only logged (via
+ * `dbErrorText`, never the raw error, whose message carries the jti).
+ */
+export function retrySessionRowDeleteLater(jti: string, delayMs: number = SESSION_DELETE_RETRY_MS): void {
+  const timer = setTimeout(() => {
+    // Inside .then so a synchronous throw (e.g. no DB client) lands in .catch.
+    Promise.resolve()
+      .then(() => deleteSessionRowBounded(jti))
+      .then((r) => {
+        if (r.ok) {
+          console.warn('[auth.logout] session row delete retry succeeded')
+        } else {
+          console.warn(
+            '[auth.logout] session row delete retry',
+            r.reason === 'timeout' ? 'timed out' : `failed: ${dbErrorText(r.error)}`,
+            '(row left; this process still treats the session as revoked)',
+          )
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('[auth.logout] session row delete retry could not start:', dbErrorText(err))
+      })
+  }, delayMs)
+  // Don't keep the process alive just for this.
+  ;(timer as { unref?: () => void }).unref?.()
 }

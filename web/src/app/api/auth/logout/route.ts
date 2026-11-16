@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
-import { eq } from 'drizzle-orm'
-import { clearSessionCookie, forgetSession, readSessionClaims } from '@/lib/auth/session'
+import { clearSessionCookie, forgetSession, readSessionClaims, revokeSession } from '@/lib/auth/session'
 import { expectedOriginFrom, isSameOriginRequest } from '@/lib/auth/sameOrigin'
-import { sessions as panelSessions } from '@/lib/db/schema/panel'
 import { writeAudit } from '@/lib/audit'
 import { env } from '@/lib/env'
 
@@ -29,24 +27,53 @@ export async function POST(req: Request) {
   // Signature + expiry only: a session that is already revoked (or whose
   // store is down) still needs its row removed and its cookie cleared.
   const claims = await readSessionClaims()
+  let rowDelete: 'deleted' | 'failed' | 'timeout' | 'skipped' = 'skipped'
   if (claims?.jti) {
     if (env.SQUISHY_DATABASE_URL) {
       try {
-        const { squishyDb } = await import('@/lib/db/squishy')
-        await squishyDb.delete(panelSessions).where(eq(panelSessions.id, claims.jti))
-      } catch (err) {
-        // Not `err` itself: Drizzle's message carries the params (the jti).
-        const { dbErrorText } = await import('@/lib/db/panelSessions')
-        console.warn('[auth.logout] failed to delete the session row (non-fatal):', dbErrorText(err))
+        // Bounded: a locked row or slow DB must not hold up the cookie clear.
+        const { deleteSessionRowBounded, dbErrorText, retrySessionRowDeleteLater } = await import(
+          '@/lib/db/panelSessions'
+        )
+        const r = await deleteSessionRowBounded(claims.jti)
+        if (r.ok) {
+          rowDelete = 'deleted'
+        } else {
+          rowDelete = r.reason
+          // Not the error itself: Drizzle's message carries the params (the jti).
+          console.warn(
+            '[auth.logout] session row delete',
+            r.reason === 'timeout' ? 'timed out' : `failed: ${dbErrorText(r.error)}`,
+            '(non-fatal; retrying once in 5 s)',
+          )
+          retrySessionRowDeleteLater(claims.jti)
+        }
+      } catch {
+        rowDelete = 'failed'
+        console.warn('[auth.logout] session row delete could not start (non-fatal)')
       }
     }
-    forgetSession(claims.jti)
+    if (rowDelete === 'deleted' || rowDelete === 'skipped') {
+      // Row gone (or no store): drop the cached verdict; the next check asks
+      // the store, which no longer has the row.
+      forgetSession(claims.jti)
+    } else {
+      // Row may survive: this process answers 'revoked' for the jti until the
+      // JWT expires, whatever a lookup finds. Any other `next` process still
+      // honours the session while the row exists, plus up to its 30 s verdict
+      // cache after the 5 s background retry (or anything else) deletes it;
+      // if the retry fails too, until the JWT expires. docker-compose.yml runs
+      // a single `next` service, so normally there is no other process.
+      revokeSession(claims.jti, (claims as { exp?: number }).exp)
+    }
   }
 
   await clearSessionCookie()
 
   if (claims) {
     const actor = { id: claims.id, username: claims.username }
+    // writeAudit is bounded: auth.logout goes through insertPanelAudit
+    // (800 ms DB-side timeouts, 1 s caller-side cap) and never throws.
     await writeAudit({
       bot: 'squishy',
       actor,
@@ -54,7 +81,9 @@ export async function POST(req: Request) {
       action: 'auth.logout',
       targetType: 'panel_sessions',
       targetId: null,
-      success: true,
+      // Cookie is always cleared; success means the row is gone too.
+      success: rowDelete === 'deleted' || rowDelete === 'skipped',
+      after: { rowDelete },
     })
   }
 
