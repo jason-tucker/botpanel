@@ -27,7 +27,10 @@ export interface Session {
    * Optional because pre-existing JWTs minted before this field was added
    * don't have it — readers MUST treat `undefined` as "unknown" rather
    * than "empty" (use the prior visibility flags as a fallback). New
-   * logins always set this from `https://discord.com/api/users/@me/guilds`.
+   * logins set this from `https://discord.com/api/users/@me/guilds`,
+   * filtered down to the guilds the panel actually checks (currently only
+   * `GUILD_ID`). The full list (up to 200 IDs) pushed the cookie past the
+   * browser's 4096-byte limit, which drops it silently.
    */
   guildIds?: string[]
   /**
@@ -66,6 +69,17 @@ export async function mintSession(s: Omit<Session, 'issuedAt'>): Promise<string>
     .setIssuedAt()
     .setExpirationTime(`${TTL_SECONDS}s`)
     .sign(key())
+}
+
+/**
+ * Browsers silently drop a cookie whose name + value exceeds ~4096 bytes,
+ * leaving the user signed out with no error. Stay well under that.
+ */
+export const SESSION_COOKIE_MAX_BYTES = 3800
+
+/** Bytes the browser counts against its per-cookie limit (name=value). */
+export function sessionCookieBytes(token: string): number {
+  return COOKIE_NAME.length + 1 + token.length
 }
 
 export async function setSessionCookie(token: string): Promise<void> {
