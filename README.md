@@ -84,6 +84,7 @@ All env is parsed once in `web/src/lib/env.ts`. Notable vars:
 | `BOT_OWNER_ID` | Bot-owner gate | Discord snowflake. Defaults to the original owner. |
 | `SUDO_USER_IDS` | Squishy sudo (env path) | Comma-separated snowflakes that get implicit sudo, in addition to the `sudo_users` DB table. |
 | `GUILD_ID` | Guild-scoped UI gating | The guild the bots run in. |
+| `PANEL_GUILD_IDS` | Login guild gate | Comma-separated guild snowflakes; a user must be a member of at least one to sign in (bot owner exempt). Unset ⇒ `GUILD_ID`; neither set ⇒ only `BOT_OWNER_ID` can sign in. A malformed entry fails boot. |
 | `PUBLIC_BASE_URL` | Cookie domain / OAuth redirect / CSRF origin | Source of truth for the public URL. The app never hardcodes a domain. |
 | `REDIS_URL` | Bot RPC, events, cache-invalidate | Defaults to `redis://redis:6379` on `botpanel-net`. |
 | `BOTPANEL_RPC_SECRET` | HMAC envelope for the command bus | ≥ 32 chars. **Must match the same var on both bot repos.** Unset ⇒ `callBot()` returns `{ok:false,error:'rpc-not-configured'}` and `publishInvalidate()` no-ops. |

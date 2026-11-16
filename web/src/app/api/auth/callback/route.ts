@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm'
 import { writeAudit } from '@/lib/audit'
 import { exchangeCode, fetchMe, fetchGuildIds } from '@/lib/auth/discord'
 import { mintSession, setSessionCookie, newJti, seedSession } from '@/lib/auth/session'
+import { checkLoginAccess, resolveAllowedGuildIds } from '@/lib/auth/guildGate'
 import { encryptToken } from '@/lib/auth/tokenCrypto'
 import { sessions as panelSessions } from '@/lib/db/schema/panel'
 import { env } from '@/lib/env'
@@ -12,6 +13,9 @@ export const dynamic = 'force-dynamic'
 
 /** Longest the login waits for the lazy CREATE TABLE before trying the insert. */
 const ENSURE_TABLE_WAIT_MS = 2_000
+
+/** The "no allowed guild configured" warning is logged once per process. */
+let warnedNoGuildConfigured = false
 
 /**
  * Returns the canonical home URL for this clone. We don't use `req.url`'s
@@ -62,6 +66,35 @@ export async function GET(req: Request) {
       fetchGuildIds(tokens.access_token),
     ])
     const actor = { id: user.id, username: user.global_name ?? user.username }
+    // Guild gate: only the bot owner, or a member of an allowed guild, gets
+    // a session. Checked before any session row or cookie exists.
+    const allowedGuildIds = resolveAllowedGuildIds(env.PANEL_GUILD_IDS, env.GUILD_ID)
+    const { decision, memberships } = await checkLoginAccess({
+      userId: user.id,
+      botOwnerId: env.BOT_OWNER_ID,
+      allowedGuildIds,
+      accessToken: tokens.access_token,
+    })
+    if (!decision.allow) {
+      if (decision.reason === 'no_guild_configured' && !warnedNoGuildConfigured) {
+        warnedNoGuildConfigured = true
+        console.error(
+          '[auth.callback] Neither PANEL_GUILD_IDS nor GUILD_ID is set: only BOT_OWNER_ID can sign in to the panel.',
+        )
+      }
+      await writeAudit({
+        bot: 'squishy',
+        actor,
+        viewing: actor,
+        action: 'auth.login_denied',
+        targetType: 'panel_sessions',
+        targetId: null,
+        after: { reason: decision.reason, memberships },
+        success: false,
+        errorMessage: decision.reason,
+      })
+      return NextResponse.redirect(homeUrl(`?error=${decision.reason}`))
+    }
     // Mint a server-side session id and record it in `panel_sessions`.
     // getSession() requires that row whenever the session store
     // (SQUISHY_DATABASE_URL) is configured, so the insert is mandatory
