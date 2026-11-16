@@ -15,7 +15,9 @@
  * we cleanup that handler (NOT the subscription itself) on disconnect.
  *
  * A 30s heartbeat comment (`:keep-alive`) keeps proxies from closing the
- * connection on idle. On client disconnect (AbortSignal) we tear down the
+ * connection on idle. Each heartbeat also repeats getSession()'s revocation
+ * check (`isSessionLive`) and closes the stream once the session is no
+ * longer valid. On client disconnect (AbortSignal) we tear down the
  * stream gracefully.
  *
  * Runtime is `nodejs` (not edge) because ioredis requires the Node net stack.
@@ -23,6 +25,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth/middleware'
+import { isSessionLive, readSessionClaims } from '@/lib/auth/session'
 import { getSubscriber } from '@/lib/redis'
 import type { UnifiedEntry } from '../list/route'
 
@@ -125,6 +128,10 @@ function normalize(channel: string, message: string): UnifiedEntry | null {
 
 export const GET = withAuth(
   async (req: NextRequest) => {
+    // withAuth has just validated this session; keep its jti/user so each
+    // heartbeat can re-check it.
+    const claims = await readSessionClaims()
+    if (!claims) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     const sub = getSubscriber()
     const encoder = new TextEncoder()
 
@@ -174,6 +181,13 @@ export const GET = withAuth(
 
         heartbeat = setInterval(() => {
           send(`: keep-alive ${Date.now()}\n\n`)
+          // Revoked / logged-out / store down past the stale grace: end it.
+          void isSessionLive(claims).then(
+            (live) => {
+              if (!live) cleanup?.()
+            },
+            () => cleanup?.(),
+          )
         }, HEARTBEAT_MS)
 
         cleanup = () => {

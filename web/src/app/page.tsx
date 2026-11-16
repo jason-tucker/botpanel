@@ -31,6 +31,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   missing_params: 'Discord didn’t return an auth code. Try again, and make sure to click Authorize on the consent screen.',
   bad_state: 'OAuth state mismatch — the sign-in took too long or was tampered with. Try again.',
   callback_failed: 'Discord rejected the auth code. The Client Secret may be stale or the redirect URI mismatched. Check server logs.',
+  session_store_unavailable: 'Signed in with Discord, but the panel couldn’t save your session. Try again in a minute; if it keeps happening, the panel database may be down.',
 }
 
 type BotName = 'squishy' | 'otter'

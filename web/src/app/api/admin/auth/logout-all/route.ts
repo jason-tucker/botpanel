@@ -8,14 +8,10 @@
  * log themselves out of the page they're using to trigger it. Returns
  * the count of rows deleted.
  *
- * Caveat: the JWT cookie itself is stateless — a logged-in user whose
- * `panel_sessions` row was deleted still has a valid cookie until the
- * 3-day TTL expires. The follow-up V3-3.5 issue adds a "session must
- * match a live `panel_sessions` row" check to the resolver so this
- * route really does end every other session immediately. For V3-3
- * the practical effect is just "their refresh token is gone, so they
- * can't silently renew" — combined with the JWT TTL the blast radius
- * is bounded at 3 days.
+ * `getSession()` requires a live `panel_sessions` row for the JWT's jti,
+ * so deleting the rows ends those sessions: immediately in this process
+ * (the cached verdicts are dropped below) and within the 30 s verdict
+ * cache in any other process.
  *
  * Rate-limited at 1/hour because the only legitimate use is incident
  * response — anything more frequent is almost certainly a mis-fire.
@@ -23,7 +19,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { ne } from 'drizzle-orm'
 import { withAuth } from '@/lib/auth/middleware'
-import { getSession } from '@/lib/auth/session'
+import { forgetOtherSessions, getSession } from '@/lib/auth/session'
 import { sessions as panelSessions } from '@/lib/db/schema/panel'
 import { writeAudit } from '@/lib/audit'
 import { env } from '@/lib/env'
@@ -58,6 +54,7 @@ export const POST = withAuth(
         : squishyDb.delete(panelSessions)
       const rows = await q.returning({ id: panelSessions.id })
       deleted = rows.length
+      forgetOtherSessions(actorJti)
     } catch (err) {
       console.error('[logout-all] delete failed', err)
       return NextResponse.json(
@@ -74,8 +71,10 @@ export const POST = withAuth(
       targetType: 'panel_sessions',
       targetId: null,
       before: null,
-      // Per V3-3 spec: count of rows deleted in `after`.
-      after: { deletedCount: deleted, preservedJti: actorJti },
+      // Per V3-3 spec: count of rows deleted in `after`. Only an 8-char
+      // prefix of the kept jti: audit rows are readable by sudo users, and
+      // the full jti is the session's id.
+      after: { deletedCount: deleted, preservedJtiPrefix: actorJti ? actorJti.slice(0, 8) : null },
       success: true,
     })
 

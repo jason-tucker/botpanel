@@ -240,6 +240,10 @@ export default async function SquishyAuditPage({
             <a className="text-accent underline" href="/audit">
               Audit tail
             </a>
+            ; other panel actions (sudo, sign-ins, failed attempts) are under{' '}
+            <a className="text-accent underline" href="/squishy/audit/panel">
+              Panel events
+            </a>
             .
           </p>
         </header>

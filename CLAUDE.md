@@ -141,7 +141,7 @@ Bot schemas live in the bot repos. Panel uses **vendored copies** under `src/lib
 
 **Botpanel never runs `drizzle-kit generate` or `db:migrate` for the bot schemas** — migrations are owned by the bot repos.
 
-**Panel-owned tables:** besides the vendored bot schemas, the panel owns `web/src/lib/db/schema/panel/` (`panel_sessions`, `push_subscriptions`). Their SQL lives in `web/src/lib/db/migrations/` (e.g. `0001_panel_sessions_aead.sql`, `0001_push_subscriptions.sql`) and is applied manually (`psql "$SQUISHY_DATABASE_URL" -f …`) or lazily via `CREATE TABLE IF NOT EXISTS`. The panel does not use drizzle-kit for these either — they are hand-written SQL applied once.
+**Panel-owned tables:** besides the vendored bot schemas, the panel owns `web/src/lib/db/schema/panel/` (`panel_sessions`, `push_subscriptions`, `panel_audit_log`). Their SQL lives in `web/src/lib/db/migrations/` (`0001_panel_sessions_aead.sql`, `0001_push_subscriptions.sql`, `0002_panel_audit_log.sql`) and the app also creates each lazily on first use with the same idempotent DDL (`src/lib/db/panelSessions.ts`, `src/lib/push/dispatch.ts`, `src/lib/db/panelAudit.ts` — keep each in lockstep with its SQL file); applying the file by hand (`psql "$SQUISHY_DATABASE_URL" -f …`) is optional, and needed only if the DB user lacks CREATE. The panel does not use drizzle-kit for these either — they are hand-written SQL applied once.
 
 ## Local dev
 
