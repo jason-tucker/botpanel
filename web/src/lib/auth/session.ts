@@ -120,7 +120,9 @@ export async function readSessionClaims(): Promise<Session | null> {
 /**
  * Does `panel_sessions` hold a live row for this jti + user? Primary-key
  * lookup; the user_id bind is defence in depth. Rows older than the JWT
- * TTL don't count (the JWT would have expired anyway).
+ * TTL don't count (the JWT would have expired anyway). Runs with a 1 s
+ * DB-side statement_timeout, so a query the validator gave up on (750 ms)
+ * still frees its pool connection soon after.
  */
 async function lookupSessionRow(jti: string, userId: string): Promise<boolean> {
   const [{ squishyDb }, { sessions: panelSessions }, { and, eq, sql }] = await Promise.all([
@@ -128,17 +130,20 @@ async function lookupSessionRow(jti: string, userId: string): Promise<boolean> {
     import('@/lib/db/schema/panel/sessions'),
     import('drizzle-orm'),
   ])
-  const rows = await squishyDb
-    .select({ one: sql<number>`1` })
-    .from(panelSessions)
-    .where(
-      and(
-        eq(panelSessions.id, jti),
-        eq(panelSessions.userId, userId),
-        sql`${panelSessions.createdAt} > now() - interval '3 days'`,
-      ),
-    )
-    .limit(1)
+  const rows = await squishyDb.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL statement_timeout = '1s'`)
+    return tx
+      .select({ one: sql<number>`1` })
+      .from(panelSessions)
+      .where(
+        and(
+          eq(panelSessions.id, jti),
+          eq(panelSessions.userId, userId),
+          sql`${panelSessions.createdAt} > now() - interval '3 days'`,
+        ),
+      )
+      .limit(1)
+  })
   return rows.length > 0
 }
 

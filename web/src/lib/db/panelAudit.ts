@@ -85,15 +85,48 @@ export async function ensurePanelAuditTable(): Promise<void> {
   }
 }
 
-/** Insert one row. Never throws; false when the row was not written. */
-export async function insertPanelAudit(row: PanelAuditRowInput): Promise<boolean> {
+/** Caller-side cap on the whole write (sign-in and sign-out await it). */
+export const AUDIT_INSERT_BUDGET_MS = 1_000
+
+/**
+ * Insert one row. Never throws; false when the row was not written.
+ *
+ * Sign-in and sign-out await this, so a lock on `panel_audit_log` must not
+ * hold them up: the insert runs in a transaction with a DB-side
+ * lock_timeout / statement_timeout of 800 ms, and the caller stops waiting
+ * after `AUDIT_INSERT_BUDGET_MS` regardless (a hung connection). Either way
+ * the caller gets false and leaves its console line.
+ */
+export async function insertPanelAudit(
+  row: PanelAuditRowInput,
+  budgetMs: number = AUDIT_INSERT_BUDGET_MS,
+): Promise<boolean> {
   if (!env.SQUISHY_DATABASE_URL) return false
-  try {
+  const work = (async (): Promise<boolean> => {
     await ensurePanelAuditTable()
-    await squishyDb.insert(panelAuditLog).values(row)
+    await squishyDb.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL lock_timeout = '800ms'`)
+      await tx.execute(sql`SET LOCAL statement_timeout = '800ms'`)
+      await tx.insert(panelAuditLog).values(row)
+    })
     return true
-  } catch (err) {
-    console.warn('[audit] panel_audit_log insert failed (non-fatal)', err)
-    return false
+  })()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn('[audit] panel_audit_log insert gave up after', budgetMs, 'ms (non-fatal)')
+      resolve(false)
+    }, budgetMs)
+  })
+  try {
+    return await Promise.race([
+      work.catch((err): false => {
+        console.warn('[audit] panel_audit_log insert failed (non-fatal):', dbErrorText(err))
+        return false
+      }),
+      timeout,
+    ])
+  } finally {
+    clearTimeout(timer)
   }
 }

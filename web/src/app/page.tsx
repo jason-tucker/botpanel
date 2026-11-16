@@ -35,6 +35,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_member: 'This panel is for members of the bots’ Discord servers. Join the server (and finish any membership screening), then sign in again.',
   membership_unavailable: 'Couldn’t confirm your server membership with Discord. Try again in a minute.',
   no_guild_configured: 'Sign-in is limited to the bot owner until a server is configured for this panel.',
+  session_too_large: 'Signed in with Discord, but your session was too large to store in a cookie. Try again; if it keeps happening, tell the panel admin.',
 }
 
 type BotName = 'squishy' | 'otter'

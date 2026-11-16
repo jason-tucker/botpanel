@@ -23,6 +23,15 @@
  *    lookup runs anyway. If the budget runs out while it is still pending,
  *    that counts as a timed-out lookup (back-off above), and later checks
  *    stop waiting for it and run the lookup directly until it settles.
+ *  - A query that outlives its budget leaves a per-(jti, user) "stuck"
+ *    marker until it settles. While it is set, checks for that jti answer
+ *    from the fallback and start no second query, and once `maxConcurrent`
+ *    (2) stuck markers exist, checks that would start a new query answer
+ *    from the fallback too, so a hung DB cannot drain the connection pool.
+ *    Lookups still inside their budget never count: a healthy lookup never
+ *    blocks or fails another user's check. A marker older than
+ *    `maxHoldMs` (30 s) is dropped so a query that never settles cannot
+ *    wedge the validator for good. A late answer is never cached.
  *  - `seed` records a fresh valid verdict (a row this process just wrote).
  *  - At `maxEntries` expired entries are swept first, then the oldest go.
  */
@@ -38,6 +47,8 @@ export type SessionValidatorOptions = {
   timeoutMs?: number
   maxEntries?: number
   unavailableMs?: number
+  maxConcurrent?: number
+  maxHoldMs?: number
   prepare?: () => Promise<void>
 }
 
@@ -54,6 +65,8 @@ export type SessionValidator = {
 type Entry = { valid: boolean; userId: string; checkedAt: number }
 type InFlight = { jti: string; promise: Promise<SessionVerdict> }
 type PrepareRun = { promise: Promise<void>; stalled: boolean }
+// One per stuck query; compared by identity, never by value.
+type StuckMarker = { since: number }
 
 export function createSessionValidator(opts: SessionValidatorOptions): SessionValidator {
   const lookup = opts.lookup
@@ -63,10 +76,14 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
   const timeoutMs = opts.timeoutMs ?? 750
   const maxEntries = opts.maxEntries ?? 2000
   const unavailableMs = opts.unavailableMs ?? 2_000
+  const maxConcurrent = opts.maxConcurrent ?? 2
+  const maxHoldMs = opts.maxHoldMs ?? 30_000
   const prepare = opts.prepare
 
   const cache = new Map<string, Entry>()
   const inflight = new Map<string, InFlight>()
+  // Queries that outlived their budget and have not settled yet.
+  const stuck = new Map<string, StuckMarker>()
   // Until this time, skip lookups (the store just failed to answer).
   let unavailableUntil = 0
   // The prepare attempt still running, if any (shared by every check).
@@ -116,6 +133,12 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
     return run
   }
 
+  function stuckCount(): number {
+    const t = now()
+    for (const [k, m] of stuck) if (t - m.since >= maxHoldMs) stuck.delete(k)
+    return stuck.size
+  }
+
   function fallback(jti: string, userId: string): SessionVerdict {
     const e = cache.get(jti)
     if (e && e.valid && e.userId === userId && now() - e.checkedAt <= staleGraceMs) return 'valid'
@@ -131,17 +154,35 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
     const running = inflight.get(key)
     if (running) return running.promise
     if (now() < unavailableUntil) return Promise.resolve(fallback(jti, userId))
+    // A query for this jti is stuck, or enough queries are stuck that the
+    // pool is at risk: answer from the fallback without starting another.
+    if (stuckCount() >= maxConcurrent || stuck.has(key)) {
+      return Promise.resolve(fallback(jti, userId))
+    }
 
     const self: InFlight = { jti, promise: Promise.resolve('unavailable') }
     self.promise = (async (): Promise<SessionVerdict> => {
       const run = startPrepare()
       let abandoned = false
+      let lookupStarted = false
+      let lookupSettled = false
+      let marker: StuckMarker | null = null
       const work = (async (): Promise<boolean> => {
         // A prepare that already overran a budget is not waited on again.
         if (run && !run.stalled) await run.promise
         if (abandoned) return false // budget spent; skip the stray query
-        return lookup(jti, userId)
+        lookupStarted = true
+        return Promise.resolve()
+          .then(() => lookup(jti, userId))
+          .finally(() => {
+            lookupSettled = true
+            if (marker && stuck.get(key) === marker) stuck.delete(key)
+          })
       })()
+      work.catch(() => {
+        // Handled by the race below; this only stops an unhandled rejection
+        // when the budget already ran out.
+      })
       try {
         const ok = await withTimeout(work, timeoutMs)
         // Only record the answer if nobody called forget/clearExcept while
@@ -152,6 +193,12 @@ export function createSessionValidator(opts: SessionValidatorOptions): SessionVa
         return ok ? 'valid' : 'revoked'
       } catch {
         abandoned = true
+        // The query is running past its budget: mark it stuck until it
+        // settles. A budget spent before the query started marks nothing.
+        if (lookupStarted && !lookupSettled) {
+          marker = { since: now() }
+          stuck.set(key, marker)
+        }
         if (run && preparing === run) run.stalled = true
         unavailableUntil = now() + unavailableMs
         return fallback(jti, userId)

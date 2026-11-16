@@ -14,6 +14,13 @@ export const dynamic = 'force-dynamic'
 /** Longest the login waits for the lazy CREATE TABLE before trying the insert. */
 const ENSURE_TABLE_WAIT_MS = 2_000
 
+/**
+ * Largest session JWT we will set. Browsers drop cookies over ~4096 bytes
+ * (name, value and attributes together), and a dropped cookie looks like a
+ * silent failed login, so refuse clearly instead.
+ */
+const MAX_SESSION_TOKEN_BYTES = 3_800
+
 /** The "no allowed guild configured" warning is logged once per process. */
 let warnedNoGuildConfigured = false
 
@@ -103,6 +110,40 @@ export async function GET(req: Request) {
     // optional — without OAUTH_TOKEN_KEY (or if encryption fails) the row
     // is written with those columns NULL and login still works.
     const jti = newJti()
+    // Minted (and size-checked) before the session row is written, so a
+    // refused login leaves no row behind.
+    const token = await mintSession({
+      id: user.id,
+      username: user.global_name ?? user.username,
+      global_name: user.global_name,
+      avatar: user.avatar,
+      // Captured at login; readers treat as a UI hint (sidebar gates),
+      // never as an authorization grant. Stays in the JWT for the
+      // 3-day TTL — users moving in/out of guilds within that window
+      // just see slightly stale sidebar gating until they log back in.
+      // Only the IDs a reader checks are kept (today just GUILD_ID: the
+      // sidebar in nav.ts and report/page.tsx); the full list of a user in
+      // hundreds of servers would overflow the cookie.
+      guildIds: env.GUILD_ID ? guildIds.filter((id) => id === env.GUILD_ID) : [],
+      jti,
+    })
+    // The token is base64url ASCII, so its length is its byte size.
+    if (token.length > MAX_SESSION_TOKEN_BYTES) {
+      console.warn(
+        `[auth.callback] session token is ${token.length} bytes (limit ${MAX_SESSION_TOKEN_BYTES}); login refused`,
+      )
+      await writeAudit({
+        bot: 'squishy',
+        actor,
+        viewing: actor,
+        action: 'auth.login',
+        targetType: 'panel_sessions',
+        targetId: null,
+        success: false,
+        errorMessage: 'session_too_large',
+      })
+      return NextResponse.redirect(homeUrl('?error=session_too_large'))
+    }
     if (env.SQUISHY_DATABASE_URL) {
       let enc: ReturnType<typeof encryptToken> | null = null
       if (env.OAUTH_TOKEN_KEY) {
@@ -178,18 +219,6 @@ export async function GET(req: Request) {
     } else {
       console.warn('[auth.callback] SQUISHY_DATABASE_URL not set — no session row; revocation disabled')
     }
-    const token = await mintSession({
-      id: user.id,
-      username: user.global_name ?? user.username,
-      global_name: user.global_name,
-      avatar: user.avatar,
-      // Captured at login; readers treat as a UI hint (sidebar gates),
-      // never as an authorization grant. Stays in the JWT for the
-      // 3-day TTL — users moving in/out of guilds within that window
-      // just see slightly stale sidebar gating until they log back in.
-      guildIds,
-      jti,
-    })
     await setSessionCookie(token)
     await writeAudit({
       bot: 'squishy',
