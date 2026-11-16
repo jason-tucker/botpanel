@@ -31,6 +31,20 @@ const schema = z.object({
 
   // ─── Discord guild ────────────────────────────────────────────────
   GUILD_ID: z.string().regex(/^\d{15,25}$/).optional(),
+  // Comma-separated guild snowflakes whose members may sign in to the
+  // panel (member of ANY one is enough). Unset or blank falls back to
+  // GUILD_ID; with neither set only BOT_OWNER_ID can sign in. A malformed
+  // entry fails boot. Resolved by `resolveAllowedGuildIds` (auth/guildGate.ts).
+  PANEL_GUILD_IDS: z
+    .string()
+    .optional()
+    .transform((s) =>
+      (s ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.string().regex(/^\d{15,25}$/, 'PANEL_GUILD_IDS entries must be Discord snowflakes'))),
 
   // ─── Public URL ───────────────────────────────────────────────────
   // Cookie domain / OAuth redirect / CSRF origin derive from this at boot.

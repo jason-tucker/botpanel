@@ -6,3 +6,4 @@
  * for the DDL.
  */
 export * from './sessions'
+export * from './panelAuditLog'

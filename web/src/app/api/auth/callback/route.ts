@@ -1,18 +1,28 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { sql } from 'drizzle-orm'
+import { writeAudit } from '@/lib/audit'
 import { exchangeCode, fetchMe, fetchGuildIds } from '@/lib/auth/discord'
-import {
-  mintSession,
-  setSessionCookie,
-  newJti,
-  sessionCookieBytes,
-  SESSION_COOKIE_MAX_BYTES,
-} from '@/lib/auth/session'
+import { mintSession, setSessionCookie, newJti, seedSession } from '@/lib/auth/session'
+import { checkLoginAccess, resolveAllowedGuildIds } from '@/lib/auth/guildGate'
 import { encryptToken } from '@/lib/auth/tokenCrypto'
 import { sessions as panelSessions } from '@/lib/db/schema/panel'
 import { env } from '@/lib/env'
 
 export const dynamic = 'force-dynamic'
+
+/** Longest the login waits for the lazy CREATE TABLE before trying the insert. */
+const ENSURE_TABLE_WAIT_MS = 2_000
+
+/**
+ * Largest session JWT we will set. Browsers drop cookies over ~4096 bytes
+ * (name, value and attributes together), and a dropped cookie looks like a
+ * silent failed login, so refuse clearly instead.
+ */
+const MAX_SESSION_TOKEN_BYTES = 3_800
+
+/** The "no allowed guild configured" warning is logged once per process. */
+let warnedNoGuildConfigured = false
 
 /**
  * Returns the canonical home URL for this clone. We don't use `req.url`'s
@@ -62,36 +72,46 @@ export async function GET(req: Request) {
       fetchMe(tokens.access_token),
       fetchGuildIds(tokens.access_token),
     ])
-    // Mint a server-side session id, then encrypt + persist the refresh
-    // token under it. Best-effort: a DB failure here (or a missing
-    // `OAUTH_TOKEN_KEY`) MUST NOT block login — we'll log a warning and
-    // proceed with the JWT-only flow. The follow-up cost is just that
-    // we can't refresh access tokens silently for this user; they'll
-    // re-OAuth when their access token expires.
-    const jti = newJti()
-    try {
-      if (env.OAUTH_TOKEN_KEY && env.SQUISHY_DATABASE_URL) {
-        const enc = encryptToken(tokens.refresh_token)
-        const { squishyDb } = await import('@/lib/db/squishy')
-        await squishyDb.insert(panelSessions).values({
-          id: jti,
-          userId: user.id,
-          refreshTokenCiphertext: enc.ciphertext,
-          refreshTokenIv: enc.iv,
-          refreshTokenTag: enc.tag,
-          refreshTokenKeyVersion: enc.keyVersion,
-        })
-      } else {
-        console.warn(
-          '[auth.callback] OAUTH_TOKEN_KEY or SQUISHY_DATABASE_URL not set — skipping refresh-token persistence',
+    const actor = { id: user.id, username: user.global_name ?? user.username }
+    // Guild gate: only the bot owner, or a member of an allowed guild, gets
+    // a session. Checked before any session row or cookie exists.
+    const allowedGuildIds = resolveAllowedGuildIds(env.PANEL_GUILD_IDS, env.GUILD_ID)
+    const { decision, memberships } = await checkLoginAccess({
+      userId: user.id,
+      botOwnerId: env.BOT_OWNER_ID,
+      allowedGuildIds,
+      accessToken: tokens.access_token,
+    })
+    if (!decision.allow) {
+      if (decision.reason === 'no_guild_configured' && !warnedNoGuildConfigured) {
+        warnedNoGuildConfigured = true
+        console.error(
+          '[auth.callback] Neither PANEL_GUILD_IDS nor GUILD_ID is set: only BOT_OWNER_ID can sign in to the panel.',
         )
       }
-    } catch (err) {
-      // Don't surface to the user; the JWT cookie still authenticates
-      // them for this session's 3-day TTL. Operators will see this in
-      // logs and can fix the DB or env without disrupting users.
-      console.warn('[auth.callback] failed to persist encrypted refresh token (non-fatal)', err)
+      await writeAudit({
+        bot: 'squishy',
+        actor,
+        viewing: actor,
+        action: 'auth.login_denied',
+        targetType: 'panel_sessions',
+        targetId: null,
+        after: { reason: decision.reason, memberships },
+        success: false,
+        errorMessage: decision.reason,
+      })
+      return NextResponse.redirect(homeUrl(`?error=${decision.reason}`))
     }
+    // Mint a server-side session id and record it in `panel_sessions`.
+    // getSession() requires that row whenever the session store
+    // (SQUISHY_DATABASE_URL) is configured, so the insert is mandatory
+    // there: if it fails we set no cookie rather than hand out a session
+    // that would read as logged out. The encrypted refresh token is
+    // optional — without OAUTH_TOKEN_KEY (or if encryption fails) the row
+    // is written with those columns NULL and login still works.
+    const jti = newJti()
+    // Minted (and size-checked) before the session row is written, so a
+    // refused login leaves no row behind.
     const token = await mintSession({
       id: user.id,
       username: user.global_name ?? user.username,
@@ -101,20 +121,114 @@ export async function GET(req: Request) {
       // never as an authorization grant. Stays in the JWT for the
       // 3-day TTL — users moving in/out of guilds within that window
       // just see slightly stale sidebar gating until they log back in.
-      // Only the guilds the panel checks are kept (readers only test
-      // membership of GUILD_ID): the full list, up to 200 IDs, pushed the
-      // cookie past the browser's 4096-byte limit and it was dropped.
-      guildIds: env.GUILD_ID && guildIds.includes(env.GUILD_ID) ? [env.GUILD_ID] : [],
+      // Only the IDs a reader checks are kept (today just GUILD_ID: the
+      // sidebar in nav.ts and report/page.tsx); the full list of a user in
+      // hundreds of servers would overflow the cookie.
+      guildIds: env.GUILD_ID ? guildIds.filter((id) => id === env.GUILD_ID) : [],
       jti,
     })
-    const cookieBytes = sessionCookieBytes(token)
-    if (cookieBytes > SESSION_COOKIE_MAX_BYTES) {
+    // The token is base64url ASCII, so its length is its byte size.
+    if (token.length > MAX_SESSION_TOKEN_BYTES) {
       console.warn(
-        `[auth.callback] session cookie too large (${cookieBytes} bytes > ${SESSION_COOKIE_MAX_BYTES}) — not setting it`,
+        `[auth.callback] session token is ${token.length} bytes (limit ${MAX_SESSION_TOKEN_BYTES}); login refused`,
       )
+      await writeAudit({
+        bot: 'squishy',
+        actor,
+        viewing: actor,
+        action: 'auth.login',
+        targetType: 'panel_sessions',
+        targetId: null,
+        success: false,
+        errorMessage: 'session_too_large',
+      })
       return NextResponse.redirect(homeUrl('?error=session_too_large'))
     }
+    if (env.SQUISHY_DATABASE_URL) {
+      let enc: ReturnType<typeof encryptToken> | null = null
+      if (env.OAUTH_TOKEN_KEY) {
+        try {
+          enc = encryptToken(tokens.refresh_token)
+        } catch (err) {
+          console.warn('[auth.callback] refresh-token encryption failed; storing the session without it', err)
+        }
+      } else {
+        console.warn('[auth.callback] OAUTH_TOKEN_KEY not set — session stored without a refresh token')
+      }
+      try {
+        const [{ squishyDb }, { ensurePanelSessionsTable }] = await Promise.all([
+          import('@/lib/db/squishy'),
+          import('@/lib/db/panelSessions'),
+        ])
+        // Lazy create on a fresh deploy (never throws; the insert decides),
+        // waited on for at most ENSURE_TABLE_WAIT_MS.
+        let ensureTimer: ReturnType<typeof setTimeout> | undefined
+        await Promise.race([
+          ensurePanelSessionsTable(),
+          new Promise<void>((res) => {
+            ensureTimer = setTimeout(res, ENSURE_TABLE_WAIT_MS)
+          }),
+        ]).finally(() => clearTimeout(ensureTimer))
+        await squishyDb.insert(panelSessions).values({
+          id: jti,
+          userId: user.id,
+          ...(enc
+            ? {
+                refreshTokenCiphertext: enc.ciphertext,
+                refreshTokenIv: enc.iv,
+                refreshTokenTag: enc.tag,
+                refreshTokenKeyVersion: enc.keyVersion,
+              }
+            : {}),
+        })
+        // This process now knows the row exists: the first requests after
+        // login read as signed in even during a lookup back-off.
+        seedSession(jti, user.id)
+      } catch (err) {
+        const { dbErrorText } = await import('@/lib/db/panelSessions')
+        console.error('[auth.callback] failed to store the session row; login refused:', dbErrorText(err))
+        await writeAudit({
+          bot: 'squishy',
+          actor,
+          viewing: actor,
+          action: 'auth.login',
+          targetType: 'panel_sessions',
+          targetId: null,
+          success: false,
+          errorMessage: 'session_store_unavailable',
+        })
+        return NextResponse.redirect(homeUrl('?error=session_store_unavailable'))
+      }
+      // Best-effort purge of rows past the JWT TTL; never blocks login.
+      void (async () => {
+        const [{ squishyDb }, { dbErrorText }] = await Promise.all([
+          import('@/lib/db/squishy'),
+          import('@/lib/db/panelSessions'),
+        ])
+        try {
+          await squishyDb
+            .delete(panelSessions)
+            .where(sql`${panelSessions.createdAt} < now() - interval '3 days'`)
+        } catch (err) {
+          console.warn('[auth.callback] expired-session purge failed (non-fatal):', dbErrorText(err))
+        }
+      })().catch(() => {
+        // Only the two module loads can land here; both already succeeded
+        // above, so there is nothing worth logging.
+      })
+    } else {
+      console.warn('[auth.callback] SQUISHY_DATABASE_URL not set — no session row; revocation disabled')
+    }
     await setSessionCookie(token)
+    await writeAudit({
+      bot: 'squishy',
+      actor,
+      viewing: actor,
+      action: 'auth.login',
+      targetType: 'panel_sessions',
+      targetId: null,
+      success: true,
+    })
     return NextResponse.redirect(homeUrl())
   } catch (err) {
     console.error('OAuth callback failed:', err)
