@@ -219,7 +219,14 @@ export async function callBot<T = unknown>(
           settle({ ok: false, error: 'bad-reply' })
           return
         }
-        const check = verifyReply(parsed, { secret, requestId, requireSigned })
+        let check: ReturnType<typeof verifyReply>
+        try {
+          check = verifyReply(parsed, { secret, requestId, requireSigned })
+        } catch {
+          // Never let a forged reply throw out of the listener; keep waiting.
+          ignore('verify-error')
+          return
+        }
         if (check.kind === 'ignore') {
           ignore(check.reason)
           return

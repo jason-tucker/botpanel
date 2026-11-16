@@ -90,7 +90,14 @@ export function verifyReply(parsed: unknown, opts: VerifyReplyOptions): ReplyChe
   if (typeof hmac !== 'string' || typeof ts !== 'number' || !Number.isFinite(ts)) {
     return { kind: 'ignore', reason: 'bad-signature-format' }
   }
-  const expected = hmacHex(opts.secret, replyMessage(opts.requestId, ts, JSON.stringify(rest)))
+  // A forged reply can make stringify throw (RangeError on deep nesting, a
+  // throwing toJSON, BigInt). That must be an ignore, never an escape.
+  let expected: string
+  try {
+    expected = hmacHex(opts.secret, replyMessage(opts.requestId, ts, JSON.stringify(rest)))
+  } catch {
+    return { kind: 'ignore', reason: 'bad-hmac' }
+  }
   if (!safeEqualHex(hmac, expected)) return { kind: 'ignore', reason: 'bad-hmac' }
 
   const now = opts.now ?? Date.now()

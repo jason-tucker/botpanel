@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- fix(security): a forged, deeply nested or throwing-`toJSON` signed RPC reply no longer throws out of `verifyReply` or the `callBot` reply listener; it is ignored and the call keeps waiting (`reply-rejected` on timeout).
+
 - feat(security): `callBot` now verifies signed bot RPC replies (`src/lib/botrpcReply.ts`: `{...result, ts, hmac}` with `hmac = HMAC-SHA256(BOTPANEL_RPC_SECRET, "res.<id>|<id>|<ts>|<body>")`, 30 s window, constant-time compare). A bad or stale signature is ignored rather than accepted, and a call that times out after ignoring a reply returns `reply-rejected`; `ts`/`hmac` are stripped before routes see the reply. Unsigned replies are still accepted unless the bot is listed in the new `BOTPANEL_RPC_REQUIRE_SIGNED_REPLIES` (default empty, so nothing changes until the bots sign). Limitation: with one shared secret any bot can sign any reply; this only stops a Redis client without the secret.
 - feat(security): optional Redis AUTH — the `redis` compose service turns on `requirepass` (from a conf file, not argv) only when `REDIS_PASSWORD` is set, and its healthcheck authenticates via `REDISCLI_AUTH`; unset keeps today's behaviour. Clients use `REDIS_URL=redis://:<password>@redis:6379`. The panel no longer logs `REDIS_URL` raw: the subscriber reconnect message goes through the new `redactRedisUrl` (`src/lib/util/redact.ts`).
 - fix(otter): every Otter RPC call from the panel now sends `actorUserId` (the real signed-in user, never the View-As target) — employee hire/fire/promote/demote, sync-roles, roster, OC-stock post, Caked post, report and the meta channel/member/role lookups — so otterbot can re-verify and audit who acted.
