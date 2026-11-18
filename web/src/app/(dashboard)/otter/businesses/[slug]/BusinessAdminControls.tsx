@@ -34,6 +34,7 @@ import {
   relTime,
 } from '@/lib/util/otterFormat'
 import type { BusinessRank } from '@/lib/auth/perms'
+import { describeError } from '@/lib/rpcErrors'
 
 export type Owner = {
   id: string
@@ -571,7 +572,7 @@ export function SyncRolesCard({
           role="alert"
           className="rounded-md border border-err/40 bg-err/10 px-3 py-2 text-sm text-err"
         >
-          {result.error}
+          {describeError(result.error)}
         </div>
       )}
       <ServerForm

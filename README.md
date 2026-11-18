@@ -84,6 +84,7 @@ All env is parsed once in `web/src/lib/env.ts`. Notable vars:
 | `BOT_OWNER_ID` | Bot-owner gate | Discord snowflake. Defaults to the original owner. |
 | `SUDO_USER_IDS` | Squishy sudo (env path) | Comma-separated snowflakes that get implicit sudo, in addition to the `sudo_users` DB table. |
 | `GUILD_ID` | Guild-scoped UI gating | The guild the bots run in. |
+| `PANEL_GUILD_IDS` | Login guild gate | Comma-separated guild snowflakes; a user must be a member of at least one to sign in (bot owner exempt). Unset ⇒ `GUILD_ID`; neither set ⇒ only `BOT_OWNER_ID` can sign in. A malformed entry fails boot. |
 | `PUBLIC_BASE_URL` | Cookie domain / OAuth redirect / CSRF origin | Source of truth for the public URL. The app never hardcodes a domain. |
 | `REDIS_URL` | Bot RPC, events, cache-invalidate | Defaults to `redis://redis:6379` on `botpanel-net`. |
 | `BOTPANEL_RPC_SECRET` | HMAC envelope for the command bus | ≥ 32 chars. **Must match the same var on both bot repos.** Unset ⇒ `callBot()` returns `{ok:false,error:'rpc-not-configured'}` and `publishInvalidate()` no-ops. |
@@ -99,7 +100,7 @@ All env is parsed once in `web/src/lib/env.ts`. Notable vars:
 
 ### Auth model — capabilities, not tiers
 
-Sign-in is **Discord OAuth2** (`identify guilds guilds.members.read`). The session is a JWT (HS512, `jose`) in a `__Host-session` cookie — `HttpOnly; Secure; SameSite=Lax; Path=/`, 3-day sliding TTL. The user's Discord refresh token is AES-256-GCM encrypted (`auth/tokenCrypto.ts`) and stored in a panel-owned `panel_sessions` row keyed by a per-session `jti`.
+Sign-in is **Discord OAuth2** (`identify guilds guilds.members.read`). The session is a JWT (HS512, `jose`) in a `__Host-session` cookie — `HttpOnly; Secure; SameSite=Lax; Path=/`, fixed 3-day TTL from login (nothing rolls it forward). Each login writes a panel-owned `panel_sessions` row keyed by a per-session `jti`; with `SQUISHY_DATABASE_URL` set, a session is only valid while its row exists (deleting it — logout, logout-all — revokes it), and the user's Discord refresh token is stored there AES-256-GCM encrypted (`auth/tokenCrypto.ts`) when `OAUTH_TOKEN_KEY` is set.
 
 `web/src/lib/auth/perms.ts` exports a single `resolveAccess(session, { viewAsUserId? })` that returns a **flat capability map** — not a tier enum:
 
@@ -178,7 +179,7 @@ CI → GHCR → Watchtower; one stack on the VPS, served at `bots.tucker.host` v
 - **No host ports.** Every container talks over `botpanel-net`; Caddy binds loopback only; cloudflared is the sole ingress.
 - A separate workflow (`.github/workflows/sync-bot-schema.yml`) listens for `repository_dispatch` (`bot-schema-changed`) from the bot repos and opens/refreshes a rolling PR when vendored schemas drift, so a bot schema change can't leave `main` red.
 
-Schema sync: `scripts/sync-schema.sh` copies the bots' Drizzle schemas into `web/src/lib/db/schema/{squishy,otter}/`; `pnpm verify:schemas` re-runs it and fails on diff. **The panel never runs `drizzle-kit generate` / `db:migrate`** — the bot repos own migrations. (The panel-owned `panel_sessions` and `push_subscriptions` tables ship as `CREATE TABLE IF NOT EXISTS` lazy creates with matching SQL under `web/src/lib/db/migrations/` for operators who prefer to apply them by hand.)
+Schema sync: `scripts/sync-schema.sh` copies the bots' Drizzle schemas into `web/src/lib/db/schema/{squishy,otter}/`; `pnpm verify:schemas` re-runs it and fails on diff. **The panel never runs `drizzle-kit generate` / `db:migrate`** — the bot repos own migrations. (The panel-owned `panel_sessions`, `push_subscriptions` and `panel_audit_log` tables in the Squishy DB are created lazily on first use — idempotent `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` DDL in `lib/db/panelSessions.ts`, `lib/push/dispatch.ts` and `lib/db/panelAudit.ts` — with matching SQL under `web/src/lib/db/migrations/` for operators who prefer to apply them by hand, e.g. when the DB user lacks CREATE.)
 
 ## Conventions
 

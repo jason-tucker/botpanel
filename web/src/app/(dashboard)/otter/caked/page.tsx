@@ -20,6 +20,7 @@ import { resolveAccess } from '@/lib/auth/perms'
 import { CakedPoster } from './CakedPoster'
 import { BusinessMessageEditor } from '@/components/otter/BusinessMessageEditor'
 import { loadBusinessMessages } from '@/lib/otter/businessMessages'
+import { describeError } from '@/lib/rpcErrors'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,7 +83,7 @@ export default async function CakedMessagingPage() {
           <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
             <p className="font-medium mb-1">Couldn&apos;t load editor</p>
             <p className="text-xs text-amber-200/80">
-              The bot returned <code className="font-mono">{messagesResult.error}</code>. You can
+              The bot reported: {describeError(messagesResult.error)}. You can
               still post cards below — the bot will render the latest saved
               text.
             </p>

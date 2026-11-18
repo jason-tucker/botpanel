@@ -45,6 +45,7 @@ import {
 import { EmployeePanel } from './EmployeePanel'
 import { BusinessButtonsEditor } from '@/components/otter/BusinessButtonsEditor'
 import { loadBusinessButtons } from '@/lib/otter/businessButtons'
+import { describeError } from '@/lib/rpcErrors'
 
 // MKE staff are managed on the external mke.euphoric.gg portal, so
 // /otter/businesses/mckenzie does NOT mount EmployeePanel — the
@@ -377,7 +378,7 @@ export default async function BusinessDetailPage(
             <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
               <p className="font-medium mb-1">Couldn&apos;t load custom buttons</p>
               <p className="text-xs text-amber-200/80">
-                The bot returned <code className="font-mono">{buttonsResult.error}</code>.
+                The bot reported: {describeError(buttonsResult.error)}.
               </p>
             </section>
           )

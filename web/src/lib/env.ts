@@ -31,6 +31,20 @@ const schema = z.object({
 
   // ─── Discord guild ────────────────────────────────────────────────
   GUILD_ID: z.string().regex(/^\d{15,25}$/).optional(),
+  // Comma-separated guild snowflakes whose members may sign in to the
+  // panel (member of ANY one is enough). Unset or blank falls back to
+  // GUILD_ID; with neither set only BOT_OWNER_ID can sign in. A malformed
+  // entry fails boot. Resolved by `resolveAllowedGuildIds` (auth/guildGate.ts).
+  PANEL_GUILD_IDS: z
+    .string()
+    .optional()
+    .transform((s) =>
+      (s ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.string().regex(/^\d{15,25}$/, 'PANEL_GUILD_IDS entries must be Discord snowflakes'))),
 
   // ─── Public URL ───────────────────────────────────────────────────
   // Cookie domain / OAuth redirect / CSRF origin derive from this at boot.
@@ -39,6 +53,21 @@ const schema = z.object({
   // ─── Inter-process ────────────────────────────────────────────────
   REDIS_URL: z.string().default('redis://redis:6379'),
   BOTPANEL_RPC_SECRET: z.string().min(32).optional(),
+  // Comma-separated bot names (`otter`, `squishy`) whose RPC replies must be
+  // HMAC-signed. Unsigned replies from a listed bot are ignored (the call
+  // ends `reply-rejected`). Default empty: unsigned replies are accepted.
+  BOTPANEL_RPC_REQUIRE_SIGNED_REPLIES: z
+    .string()
+    .default('')
+    .transform(
+      (s): ReadonlySet<string> =>
+        new Set(
+          s
+            .split(',')
+            .map((b) => b.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+    ),
 
   // ─── Databases ────────────────────────────────────────────────────
   SQUISHY_DATABASE_URL: z.string().url().optional(),

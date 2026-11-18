@@ -21,6 +21,7 @@
 import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { ServerForm } from '@/lib/forms/ServerForm'
+import { describeError } from '@/lib/rpcErrors'
 
 export interface MessageItem {
   key: string
@@ -80,7 +81,7 @@ function MessageCard({
       router.refresh()
     } else {
       const detail = typeof reply.details === 'string' ? `: ${reply.details}` : ''
-      setStatus({ ok: false, text: `Bot returned ${reply.error}${detail}` })
+      setStatus({ ok: false, text: `Bot returned ${describeError(reply.error)}${detail}` })
     }
   }
 

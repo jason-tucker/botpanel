@@ -84,7 +84,7 @@ export const POST = withAuth<[RouteCtx]>(
     const reply = await callBot<{ before: string | null; after: string | null }>(
       'otter',
       'employee.demote',
-      { businessSlug: slug, userId: body.userId },
+      { businessSlug: slug, userId: body.userId, actorUserId: access.actor.id },
     )
 
     if (!reply.ok) {

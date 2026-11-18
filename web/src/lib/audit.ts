@@ -1,8 +1,9 @@
 /**
  * Unified audit-write helper used by every write-side route in the
  * dashboard. Maps a single canonical event shape onto whichever bot's
- * audit table is appropriate (Squishy → `setting_changes` for settings
- * edits, Otter → `audit_logs` for everything else).
+ * audit table is appropriate (Squishy → `setting_changes` for successful
+ * settings edits and the panel-owned `panel_audit_log` for everything
+ * else; Otter → `audit_logs`).
  *
  * Invariants:
  *  - Audit is BEST-EFFORT. A failing insert MUST NOT prevent the
@@ -26,6 +27,7 @@
  */
 import { settingChanges } from './db/schema/squishy/settingChanges'
 import { auditLogs } from './db/schema/otter/auditLogs'
+import { toPanelAuditRow } from './panelAuditRow'
 
 export type AuditActor = { id: string; username?: string }
 
@@ -72,9 +74,8 @@ function stringify(v: unknown): string | null {
 /**
  * True when the action targets Squishy's `bot_settings` table — those
  * land in `setting_changes` for backwards compatibility with the
- * existing audit tail. Everything else (sudo edits, etc.) falls
- * through to a console-only breadcrumb until schema-sync ships
- * Squishy a generic audit_logs table.
+ * existing audit tail. Everything else (sudo edits, auth events, etc.)
+ * goes to the panel-owned `panel_audit_log`.
  */
 function isSquishySettingAction(action: string): boolean {
   return action === 'setting.changed' || action === 'setting.cleared'
@@ -86,16 +87,9 @@ async function writeSquishyAudit(p: AuditEvent): Promise<void> {
   if (isSquishySettingAction(p.action)) {
     // `setting_changes` has no success column, so a failed attempt would
     // read as a real change in the bot's history. Only successful writes
-    // are inserted; failures stay a console breadcrumb.
+    // go there; failed attempts go to the panel-owned `panel_audit_log`.
     if (!p.success) {
-      console.info('[audit] squishy setting change failed (not inserted)', {
-        key: p.targetId,
-        actor: p.actor.id,
-        viewing: p.viewing.id,
-        via: 'web',
-        success: false,
-        errorMessage: p.errorMessage,
-      })
+      await writePanelAudit(p)
       return
     }
     try {
@@ -119,11 +113,26 @@ async function writeSquishyAudit(p: AuditEvent): Promise<void> {
     return
   }
 
-  // Non-settings squishy actions (e.g. sudo_user.added) don't have a
-  // typed audit table in the vendored schema yet — log a structured
-  // breadcrumb to console.info so the operator can grep for it.
-  // Schema-sync V2 will land a generic squishy.audit_logs and this
-  // branch switches to a Drizzle insert just like otter below.
+  // Non-settings squishy actions (e.g. sudo_user.added, auth.login) have
+  // no table in the vendored bot schema — they go to the panel-owned
+  // `panel_audit_log` in the same Postgres.
+  await writePanelAudit(p)
+}
+
+/**
+ * Durable row in `panel_audit_log`; when that fails (DB down, table
+ * missing, no SQUISHY_DATABASE_URL) fall back to the structured console
+ * breadcrumb the operator can grep for. Never throws.
+ */
+async function writePanelAudit(p: AuditEvent): Promise<void> {
+  let written = false
+  try {
+    const { insertPanelAudit } = await import('./db/panelAudit')
+    written = await insertPanelAudit(toPanelAuditRow(p))
+  } catch (err) {
+    console.warn('[audit] panel_audit_log write failed (non-fatal)', err)
+  }
+  if (written) return
   console.info('[audit] squishy (no-table)', {
     action: p.action,
     targetType: p.targetType,

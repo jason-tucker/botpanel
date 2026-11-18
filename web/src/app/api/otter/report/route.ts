@@ -67,6 +67,7 @@ export const POST = withAuth(
       'report.submit',
       {
         userId: access.actor.id,
+        actorUserId: access.actor.id,
         title: parsed.title,
         type: parsed.type,
         description: parsed.description,

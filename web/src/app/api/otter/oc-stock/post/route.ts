@@ -91,7 +91,7 @@ export const POST = withAuth(
     const reply = await callBot<StockPostReply>(
       'otter',
       'oc.stock_post',
-      { channelId: parsed.channelId },
+      { channelId: parsed.channelId, actorUserId: access.actor.id },
       { timeoutMs: 10_000 },
     )
 

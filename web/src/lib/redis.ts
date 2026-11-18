@@ -20,6 +20,7 @@
  */
 import Redis, { type RedisOptions } from 'ioredis'
 import { env } from './env'
+import { redactRedisUrl } from './util/redact'
 
 let subscriber: Redis | null = null
 let warnedDown = false
@@ -45,7 +46,7 @@ export function getSubscriber(): Redis {
 
   r.on('connect', () => {
     if (warnedDown) {
-      console.warn(`redis: subscriber reconnected to ${env.REDIS_URL}`)
+      console.warn(`redis: subscriber reconnected to ${redactRedisUrl(env.REDIS_URL)}`)
       warnedDown = false
     }
   })

@@ -39,6 +39,12 @@
  *    usually we still queue and the request goes out on reconnect.
  *  - `{ ok: false, error: 'bad-reply' }` — reply JSON failed to parse OR
  *    didn't match the `{ok, ...}` envelope shape.
+ *  - `{ ok: false, error: 'reply-rejected' }` — the timeout fired after one
+ *    or more replies were ignored by `botrpcReply.verifyReply` (bad or stale
+ *    HMAC, or unsigned from a bot listed in
+ *    `BOTPANEL_RPC_REQUIRE_SIGNED_REPLIES`). Ignored replies don't settle the
+ *    call, so a forged reply can't win the race. Signed replies carry
+ *    `{...result, ts, hmac}`; `ts`/`hmac` are stripped before returning.
  *  - `{ ok: true, data }` / `{ ok: false, error, details? }` — pass-through
  *    of the bot's reply.
  *
@@ -55,6 +61,7 @@ import Redis, { type RedisOptions } from 'ioredis'
 import { randomBytes } from 'node:crypto'
 import { env } from './env'
 import { hmacSha256 } from './util/hmac'
+import { verifyReply } from './botrpcReply'
 
 export type BotName = 'squishy' | 'otter'
 
@@ -67,6 +74,10 @@ export interface BotRpcOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 5000
+
+// Bots we've already warned about for sending unsigned replies (once per
+// bot per process, so the log isn't spammed until the bots start signing).
+const warnedUnsignedBots = new Set<BotName>()
 
 // ─── Publisher singleton ────────────────────────────────────────────
 // Separate from `lib/redis.ts` because that client is in subscriber
@@ -134,7 +145,8 @@ export async function callBot<T = unknown>(
   params: unknown,
   opts?: BotRpcOptions,
 ): Promise<BotRpcResult<T>> {
-  if (!env.BOTPANEL_RPC_SECRET) {
+  const secret = env.BOTPANEL_RPC_SECRET
+  if (!secret) {
     return { ok: false, error: 'rpc-not-configured' }
   }
 
@@ -145,7 +157,7 @@ export async function callBot<T = unknown>(
   const replyChannel = `res.${requestId}`
   const paramsJson = JSON.stringify(params ?? null)
   const hmac = hmacSha256(
-    env.BOTPANEL_RPC_SECRET,
+    secret,
     `${channel}|${requestId}|${ts}|${paramsJson}`,
   )
 
@@ -179,9 +191,20 @@ export async function callBot<T = unknown>(
         resolve(r)
       }
 
+      // Replies that fail verification are ignored (we keep listening), so
+      // a forged message can neither be accepted nor force an early error.
+      // If nothing valid arrives, the timeout reports `reply-rejected`.
+      let ignored = 0
+      const requireSigned = env.BOTPANEL_RPC_REQUIRE_SIGNED_REPLIES.has(bot)
+
       const timer = setTimeout(() => {
-        settle({ ok: false, error: 'timeout' })
+        settle({ ok: false, error: ignored > 0 ? 'reply-rejected' : 'timeout' })
       }, timeoutMs)
+
+      const ignore = (reason: string): void => {
+        ignored++
+        console.warn(`botrpc: ignored reply from ${bot} (${requestId}): ${reason}`)
+      }
 
       sub.on('message', (ch: string, message: string) => {
         if (ch !== replyChannel) return
@@ -189,14 +212,34 @@ export async function callBot<T = unknown>(
         try {
           parsed = JSON.parse(message)
         } catch {
+          if (requireSigned) {
+            ignore('unparseable')
+            return
+          }
           settle({ ok: false, error: 'bad-reply' })
           return
         }
-        if (!isReplyShape(parsed)) {
-          settle({ ok: false, error: 'bad-reply', details: parsed })
+        let check: ReturnType<typeof verifyReply>
+        try {
+          check = verifyReply(parsed, { secret, requestId, requireSigned })
+        } catch {
+          // Never let a forged reply throw out of the listener; keep waiting.
+          ignore('verify-error')
           return
         }
-        settle(parsed as BotRpcResult<T>)
+        if (check.kind === 'ignore') {
+          ignore(check.reason)
+          return
+        }
+        if (!check.signed && !warnedUnsignedBots.has(bot)) {
+          warnedUnsignedBots.add(bot)
+          console.warn(`botrpc: ${bot} sent an unsigned reply; accepted (not in BOTPANEL_RPC_REQUIRE_SIGNED_REPLIES)`)
+        }
+        if (!isReplyShape(check.value)) {
+          settle({ ok: false, error: 'bad-reply', details: check.value })
+          return
+        }
+        settle(check.value as BotRpcResult<T>)
       })
 
       sub.on('error', (err: Error) => {

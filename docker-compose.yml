@@ -97,7 +97,25 @@ services:
     profiles: ["primary"]
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    # Optional AUTH: set REDIS_PASSWORD in .env (`openssl rand -hex 32`; hex,
+    # so no quoting or URL-encoding) to turn on requirepass. Empty or unset
+    # keeps the old no-password behaviour. The password goes into a conf file,
+    # not argv, so it never shows in `ps` (mode 600 under the image's umask,
+    # owned by redis). Clients then use REDIS_URL=redis://:<password>@redis:6379.
+    # Runs through the image's docker-entrypoint.sh so redis-server still
+    # drops to the redis user.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$${REDIS_PASSWORD:-}" ]; then
+          printf 'requirepass %s\n' "$$REDIS_PASSWORD" > /tmp/redis-auth.conf
+          chown redis:redis /tmp/redis-auth.conf
+          exec docker-entrypoint.sh redis-server /tmp/redis-auth.conf --save 60 1 --loglevel warning
+        fi
+        exec docker-entrypoint.sh redis-server --save 60 1 --loglevel warning
     expose:
       - "6379"
     networks:
@@ -105,7 +123,8 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # Authenticates via REDISCLI_AUTH (not argv) when a password is set.
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping; else redis-cli ping; fi | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 5

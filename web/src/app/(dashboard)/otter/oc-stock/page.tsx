@@ -40,6 +40,7 @@ import { OcStockAccessCard } from './OcStockAccessCard'
 import { BusinessMessageEditor } from '@/components/otter/BusinessMessageEditor'
 import { loadBusinessMessages } from '@/lib/otter/businessMessages'
 import { evaluateOcStockAccess, loadOcStockAccess } from '@/lib/otter/ocStockAccess'
+import { describeError } from '@/lib/rpcErrors'
 
 export const dynamic = 'force-dynamic'
 
@@ -249,7 +250,7 @@ export default async function OcStockPage() {
             <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
               <p className="font-medium mb-1">Couldn&apos;t load editor</p>
               <p className="text-xs text-amber-200/80">
-                The bot returned <code className="font-mono">{messagesResult.error}</code>.
+                The bot reported: {describeError(messagesResult.error)}.
               </p>
             </section>
           )
